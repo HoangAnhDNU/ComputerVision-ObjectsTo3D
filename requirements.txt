@@ -1,0 +1,14 @@
+torch>=2.0
+torchvision
+open-clip-torch
+trimesh
+gradio
+pandas
+numpy
+Pillow
+matplotlib
+plotly
+tensorboard
+pyyaml
+tqdm
+scipy
