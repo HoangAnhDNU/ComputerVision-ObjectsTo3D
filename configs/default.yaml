@@ -20,6 +20,7 @@ training:
   weight_decay: 0.05
   warmup_epochs: 5
   patience: 20
+  cooldown_seconds: 30    # Nghỉ giữa epoch để giảm nhiệt (0 = tắt)
 
 loss:
   lambda_cd: 1.0

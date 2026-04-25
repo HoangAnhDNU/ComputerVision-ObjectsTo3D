@@ -12,6 +12,10 @@ import argparse
 import os
 import time
 
+# Giới hạn CPU threads để giảm nhiệt
+os.environ["OMP_NUM_THREADS"] = "4"
+os.environ["MKL_NUM_THREADS"] = "4"
+
 import torch
 import torch.optim as optim
 import yaml
@@ -167,6 +171,12 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
+    # Giới hạn tài nguyên để giảm nhiệt máy
+    torch.set_num_threads(4)
+    if device.type == "cuda":
+        torch.cuda.set_per_process_memory_fraction(0.7, 0)
+        print(f"GPU memory limited to 70%")
+
     # Data
     project_root = Path(__file__).resolve().parent.parent
     data_dir = os.path.join(project_root, data_cfg["data_dir"])
@@ -296,6 +306,12 @@ def main():
             "patience_counter": patience_counter,
             "config": config,
         }, last_path)
+
+        # Cooldown giữa epoch để giảm nhiệt máy
+        cooldown = train_cfg.get("cooldown_seconds", 30)
+        if cooldown > 0:
+            print(f"  Cooling down {cooldown}s...")
+            time.sleep(cooldown)
 
         # Early stopping
         if patience_counter >= patience:
