@@ -58,15 +58,8 @@ class PointCloudTransform:
         xyz = point_cloud[:, :3].copy()
         rgb = point_cloud[:, 3:].copy()
 
-        # Random rotation quanh trục Y
-        angle = random.uniform(0, 2 * np.pi)
-        cos_a, sin_a = np.cos(angle), np.sin(angle)
-        rotation_matrix = np.array([
-            [cos_a, 0, sin_a],
-            [0, 1, 0],
-            [-sin_a, 0, cos_a],
-        ])
-        xyz = xyz @ rotation_matrix.T
+        # NOTE: Không random rotation vì ảnh rendered từ góc cố định
+        # Xoay GT point cloud sẽ phá vỡ alignment image↔3D
 
         # Random scale
         scale = random.uniform(0.9, 1.1)

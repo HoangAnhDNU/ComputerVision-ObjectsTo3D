@@ -49,7 +49,9 @@ class CLIPEncoders(nn.Module):
                 features = self.model.encode_image(image)
         else:
             features = self.model.encode_image(image)
-        return features.float()
+        features = features.float()
+        features = features / features.norm(dim=-1, keepdim=True).clamp(min=1e-8)  # L2 normalize
+        return features
 
     def encode_text(self, text_tokens):
         """
@@ -65,7 +67,9 @@ class CLIPEncoders(nn.Module):
                 features = self.model.encode_text(text_tokens)
         else:
             features = self.model.encode_text(text_tokens)
-        return features.float()
+        features = features.float()
+        features = features / features.norm(dim=-1, keepdim=True).clamp(min=1e-8)  # L2 normalize
+        return features
 
     def tokenize(self, texts):
         """
