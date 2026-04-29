@@ -8,26 +8,31 @@ import torch.nn as nn
 from scipy.optimize import linear_sum_assignment
 
 
-def chamfer_distance(pred_xyz, gt_xyz):
+def chamfer_distance(pred_xyz, gt_xyz, return_nn=False):
     """
     Chamfer Distance giữa 2 point clouds.
 
     Args:
         pred_xyz: [batch, N, 3]
         gt_xyz: [batch, M, 3]
+        return_nn: nếu True, trả thêm nearest-neighbor indices (dùng cho color alignment)
     Returns:
         cd: scalar, chamfer distance trung bình trên batch
+        nn_idx: [batch, N] (chỉ khi return_nn=True) - index GT gần nhất cho mỗi pred point
     """
     # Pairwise distances: [batch, N, M]
     diff = pred_xyz.unsqueeze(2) - gt_xyz.unsqueeze(1)  # [B, N, 1, 3] - [B, 1, M, 3]
     dist_matrix = (diff ** 2).sum(-1)  # [B, N, M]
 
     # Min distance từ mỗi pred point đến gt
-    min_dist_pred_to_gt = dist_matrix.min(dim=2)[0]  # [B, N]
+    min_dist_pred_to_gt, nn_idx = dist_matrix.min(dim=2)  # [B, N]
     # Min distance từ mỗi gt point đến pred
     min_dist_gt_to_pred = dist_matrix.min(dim=1)[0]  # [B, M]
 
     cd = min_dist_pred_to_gt.mean(dim=1) + min_dist_gt_to_pred.mean(dim=1)  # [B]
+
+    if return_nn:
+        return cd.mean(), nn_idx
     return cd.mean()
 
 
@@ -61,16 +66,22 @@ def earth_mover_distance(pred_xyz, gt_xyz):
     return torch.tensor(total_emd / batch, device=pred_xyz.device, dtype=pred_xyz.dtype)
 
 
-def color_loss(pred_rgb, gt_rgb):
+def color_loss(pred_rgb, gt_rgb, nn_idx=None):
     """
-    MSE loss cho màu sắc.
+    MSE loss cho màu sắc, dùng nearest-neighbor alignment.
 
     Args:
         pred_rgb: [batch, N, 3]
-        gt_rgb: [batch, N, 3]
+        gt_rgb: [batch, M, 3]
+        nn_idx: [batch, N] - index GT gần nhất cho mỗi pred point (từ chamfer_distance)
     Returns:
         loss: scalar
     """
+    if nn_idx is not None:
+        # Align GT colors theo nearest-neighbor matching
+        nn_idx_exp = nn_idx.unsqueeze(-1).expand(-1, -1, 3)  # [B, N, 3]
+        matched_gt_rgb = torch.gather(gt_rgb, 1, nn_idx_exp)  # [B, N, 3]
+        return ((pred_rgb - matched_gt_rgb) ** 2).mean()
     return ((pred_rgb - gt_rgb) ** 2).mean()
 
 
@@ -103,15 +114,15 @@ class MultiModal3DLoss(nn.Module):
         gt_xyz = gt_point_cloud[:, :, :3]
         gt_rgb = gt_point_cloud[:, :, 3:]
 
-        # Chamfer Distance
-        cd = chamfer_distance(pred_xyz, gt_xyz)
+        # Chamfer Distance (tính thêm NN index cho color alignment)
+        cd, nn_idx = chamfer_distance(pred_xyz, gt_xyz, return_nn=True)
 
         # Coarse Chamfer (nếu có)
         coarse_cd = torch.tensor(0.0, device=cd.device)
         if "coarse_xyz" in pred_outputs:
             # Subsample GT cho coarse comparison
             n_coarse = pred_outputs["coarse_xyz"].size(1)
-            indices = torch.randperm(gt_xyz.size(1))[:n_coarse]
+            indices = torch.randperm(gt_xyz.size(1), device=gt_xyz.device)[:n_coarse]
             gt_coarse = gt_xyz[:, indices, :]
             coarse_cd = chamfer_distance(pred_outputs["coarse_xyz"], gt_coarse)
 
@@ -120,8 +131,8 @@ class MultiModal3DLoss(nn.Module):
         if self.use_emd and self.lambda_emd > 0:
             emd = earth_mover_distance(pred_xyz, gt_xyz)
 
-        # Color loss
-        c_loss = color_loss(pred_rgb, gt_rgb)
+        # Color loss (dùng NN alignment từ CD ở trên)
+        c_loss = color_loss(pred_rgb, gt_rgb, nn_idx=nn_idx)
 
         # Total
         total = self.lambda_cd * (cd + 0.5 * coarse_cd) + self.lambda_emd * emd + self.lambda_color * c_loss

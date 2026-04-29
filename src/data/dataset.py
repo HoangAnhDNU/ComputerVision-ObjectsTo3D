@@ -106,10 +106,11 @@ class Cap3DDataset(Dataset):
             # Trả về ảnh đen nếu không có ảnh
             return Image.new("RGB", (224, 224), (0, 0, 0))
 
-        # Liệt kê các file ảnh .png
+        # Liệt kê các file ảnh .png (loại bỏ _depth.png và _MatAlpha.png)
         image_files = sorted([
             f for f in os.listdir(obj_img_dir)
             if f.endswith(".png") and not f.startswith(".")
+            and "_depth" not in f and "_MatAlpha" not in f
         ])
 
         if len(image_files) == 0:
@@ -130,6 +131,14 @@ class Cap3DDataset(Dataset):
         return self.text_transform(caps)
 
     def __getitem__(self, idx):
+        try:
+            return self._load_sample(idx)
+        except Exception as e:
+            print(f"[WARNING] Lỗi load sample {idx} ({self.object_ids[idx]}): {e}")
+            # Fallback: thử sample khác
+            return self._load_sample(random.randint(0, len(self) - 1))
+
+    def _load_sample(self, idx):
         obj_id = self.object_ids[idx]
 
         # Load point cloud
@@ -170,7 +179,7 @@ def build_dataloader(data_dir, split, batch_size=16, num_workers=4, num_points=2
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=torch.cuda.is_available(),
         drop_last=(split == "train"),
     )
 

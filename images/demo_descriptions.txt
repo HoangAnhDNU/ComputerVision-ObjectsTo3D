@@ -1,0 +1,36 @@
+============================================================
+ANH DEMO VA GOI Y MO TA VAN BAN
+Du an: Tao mo hinh 3D tu anh va mo ta van ban
+============================================================
+
+Cach dung:
+  1. Mo Gradio demo: python src/demo.py
+  2. Upload 1 anh .png tu folder nay
+  3. Copy mo ta tuong ung vao o 'Text description'
+  4. Nhan 'Generate 3D'
+
+------------------------------------------------------------
+
+Anh 1: demo_1_cabinet.png
+Mo ta (EN): A decorative storage cabinet featuring a smooth, rectangular top, an open compartment in the front for easy access, and distinct side cutouts. It has a classic design with a drawer at the top and a door below, adorned with ornamental hardware.
+
+Anh 2: demo_2_waste_bin.png
+Mo ta (EN): A cylindrical waste bin with a smooth, glossy white exterior, featuring a built-in handle on one side for easy maneuverability. It has a retractable power cord neatly secured to the side, and four small, sturdy wheels for mobility.
+
+Anh 3: demo_3_nesting_tables.png
+Mo ta (EN): A set of three nesting tables, each with a slightly smaller size than the next. They feature a simple, elegant design with straight legs and a smooth surface, made from light-colored wood.
+
+Anh 4: demo_4_console_table.png
+Mo ta (EN): A wooden console table with a smooth, white finish. It features a rectangular top surface, a pair of drawers with circular metal knobs, and an arched cutout beneath the drawers.
+
+Anh 5: demo_5_wooden_console.png
+Mo ta (EN): A multi-functional wooden console featuring a smooth rectangular top surface and a lower compartment with two doors. The design includes an open shelf above the doors, providing additional storage space.
+
+Anh 6: demo_6_chest_of_drawers.png
+Mo ta (EN): A compact wooden cabinet with a smooth rectangular top, featuring a combination of drawers and a door. The design includes four small drawers on the right and a single larger drawer on the left.
+
+Anh 7: demo_7_modern_table.png
+Mo ta (EN): A modern console table with a rectangular top and sturdy legs, featuring a central drawer and a lower shelf for additional storage. Finished in a soft white color.
+
+Anh 8: demo_8_usb_cable.png
+Mo ta (EN): A flexible USB-C cable with a rounded loop design, featuring a flat connector at one end and a standard connector at the other. The cable is uniform in a light gray color.

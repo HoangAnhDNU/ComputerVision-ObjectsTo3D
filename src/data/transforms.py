@@ -17,8 +17,7 @@ class ImageTransform:
         if is_train:
             self.transform = T.Compose([
                 T.Resize((image_size, image_size)),
-                T.RandomHorizontalFlip(p=0.5),
-                T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+                T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05),
                 T.ToTensor(),
                 T.Normalize(
                     mean=[0.48145466, 0.4578275, 0.40821073],
