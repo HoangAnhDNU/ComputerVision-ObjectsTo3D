@@ -92,6 +92,32 @@ class DemoApp:
         self.output_dir = os.path.join(project_root, "results", "demo")
         os.makedirs(self.output_dir, exist_ok=True)
 
+    def _densify_point_cloud(self, pc, num_neighbors=3):
+        """
+        Tăng mật độ point cloud bằng cách thêm điểm trung gian
+        giữa mỗi điểm và nearest neighbors.
+        """
+        from scipy.spatial import cKDTree
+
+        xyz = pc[:, :3]
+        rgb = pc[:, 3:]
+
+        tree = cKDTree(xyz)
+        dists, indices = tree.query(xyz, k=num_neighbors + 1)
+
+        new_points = []
+        for i in range(len(xyz)):
+            for j in range(1, num_neighbors + 1):
+                nn_idx = indices[i, j]
+                mid_xyz = (xyz[i] + xyz[nn_idx]) / 2.0
+                mid_rgb = (rgb[i] + rgb[nn_idx]) / 2.0
+                new_points.append(np.concatenate([mid_xyz, mid_rgb]))
+
+        if new_points:
+            new_pc = np.array(new_points, dtype=np.float32)
+            return np.concatenate([pc, new_pc], axis=0)
+        return pc
+
     def generate_3d(self, image, text):
         """
         Generate 3D point cloud từ ảnh + text.
@@ -139,16 +165,20 @@ class DemoApp:
         # Lấy point cloud
         pc = outputs["point_cloud"][0].cpu().numpy()  # [N, 6]
 
+        # Densify nhẹ: thêm midpoints giữa nearest neighbors
+        pc = self._densify_point_cloud(pc, num_neighbors=3)
+
         # Tạo Plotly figure
         xyz = pc[:, :3]
-        rgb = pc[:, 3:]
+        rgb = np.clip(pc[:, 3:], 0, 1)
 
         fig = go.Figure(data=[go.Scatter3d(
             x=xyz[:, 0], y=xyz[:, 1], z=xyz[:, 2],
             mode='markers',
             marker=dict(
-                size=2,
+                size=3,
                 color=[f'rgb({int(r*255)},{int(g*255)},{int(b*255)})' for r, g, b in rgb],
+                opacity=0.9,
             )
         )])
         fig.update_layout(
@@ -157,12 +187,14 @@ class DemoApp:
                 yaxis=dict(visible=False),
                 zaxis=dict(visible=False),
                 aspectmode='data',
+                bgcolor='rgb(30,30,30)',
             ),
+            paper_bgcolor='rgb(30,30,30)',
             margin=dict(l=0, r=0, b=0, t=0),
             height=500,
         )
 
-        # Tạo mesh và lưu file
+        # Lưu files
         ply_path = os.path.join(self.output_dir, "output.ply")
         obj_path = os.path.join(self.output_dir, "output.obj")
         try:
