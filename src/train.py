@@ -61,7 +61,7 @@ def cos_pi(x):
     return math.cos(math.pi * x)
 
 
-def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_every=10):
+def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_every=10, save_every=50, ckpt_dir=None, best_val_cd=float("inf"), patience_counter=0, config=None):
     model.train()
     total_loss = 0.0
     loss_details = {"chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0}
@@ -100,6 +100,23 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_
         if (batch_idx + 1) % log_every == 0:
             avg = total_loss / num_batches
             pbar.set_postfix(loss=f"{avg:.4f}", cd=f"{loss_details['chamfer_distance']/num_batches:.4f}")
+
+        # Save checkpoint mid-epoch để tránh mất progress khi Colab timeout
+        # Dùng atomic save (write to tmp then rename) để tránh file hỏng
+        if ckpt_dir and (batch_idx + 1) % save_every == 0:
+            last_path = os.path.join(ckpt_dir, "last_model.pth")
+            tmp_path = last_path + ".tmp"
+            torch.save({
+                "epoch": epoch,
+                "batch_idx": batch_idx,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "best_val_cd": best_val_cd,
+                "patience_counter": patience_counter,
+                "config": config,
+            }, tmp_path)
+            os.replace(tmp_path, last_path)
+            pbar.write(f"  Checkpoint saved at batch {batch_idx + 1}")
 
     metrics = {k: v / num_batches for k, v in loss_details.items()}
     metrics["total"] = total_loss / num_batches
@@ -172,12 +189,14 @@ def main():
     print(f"Device: {device}")
 
     # Giới hạn tài nguyên để giảm nhiệt máy (chỉ trên local PC)
-    torch.set_num_threads(4)
-    if device.type == "cuda" and train_cfg.get("cooldown_seconds", 0) > 0:
-        torch.cuda.set_per_process_memory_fraction(0.7, 0)
-        print(f"GPU memory limited to 70% (local PC mode)")
-    elif device.type == "cuda":
-        print(f"GPU memory: full (Colab/server mode)")
+    is_local = train_cfg.get("cooldown_seconds", 0) > 0
+    if is_local:
+        torch.set_num_threads(4)
+        if device.type == "cuda":
+            torch.cuda.set_per_process_memory_fraction(0.7, 0)
+        print(f"Local PC mode: threads=4, GPU=70%")
+    else:
+        print(f"Colab/server mode: full resources")
 
     # Data (hỗ trợ cả path tuyệt đối trên Colab và relative trên PC)
     project_root = Path(__file__).resolve().parent.parent
@@ -185,12 +204,14 @@ def main():
     if not os.path.isabs(data_dir):
         data_dir = os.path.join(project_root, data_dir)
 
+    max_objects = data_cfg.get("max_objects", 0)
     train_loader = build_dataloader(
         data_dir=data_dir, split="train",
         batch_size=data_cfg["batch_size"],
         num_workers=data_cfg["num_workers"],
         num_points=data_cfg["num_points"],
         image_size=data_cfg["image_size"],
+        max_objects=max_objects,
     )
     val_loader = build_dataloader(
         data_dir=data_dir, split="val",
@@ -198,6 +219,7 @@ def main():
         num_workers=data_cfg["num_workers"],
         num_points=data_cfg["num_points"],
         image_size=data_cfg["image_size"],
+        max_objects=max_objects // 5 if max_objects > 0 else 0,
     )
 
     # Model
@@ -266,6 +288,11 @@ def main():
         train_metrics = train_one_epoch(
             model, train_loader, criterion, optimizer, device, epoch + 1,
             log_every=log_cfg.get("log_every", 10),
+            save_every=50,  # Save checkpoint mỗi 50 batches
+            ckpt_dir=ckpt_dir,
+            best_val_cd=best_val_cd,
+            patience_counter=patience_counter,
+            config=config,
         )
 
         # Validate
@@ -300,8 +327,9 @@ def main():
             patience_counter += 1
             print(f"  No improvement ({patience_counter}/{patience})")
 
-        # Save last model
+        # Save last model (atomic save)
         last_path = os.path.join(ckpt_dir, "last_model.pth")
+        tmp_path = last_path + ".tmp"
         torch.save({
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
@@ -309,7 +337,8 @@ def main():
             "best_val_cd": best_val_cd,
             "patience_counter": patience_counter,
             "config": config,
-        }, last_path)
+        }, tmp_path)
+        os.replace(tmp_path, last_path)
 
         # Cooldown giữa epoch để giảm nhiệt máy
         cooldown = train_cfg.get("cooldown_seconds", 30)

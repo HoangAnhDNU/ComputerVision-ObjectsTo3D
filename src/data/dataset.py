@@ -162,7 +162,7 @@ class Cap3DDataset(Dataset):
         }
 
 
-def build_dataloader(data_dir, split, batch_size=16, num_workers=4, num_points=2048, image_size=224):
+def build_dataloader(data_dir, split, batch_size=16, num_workers=4, num_points=2048, image_size=224, max_objects=0):
     """Tạo DataLoader cho split tương ứng."""
     from torch.utils.data import DataLoader
 
@@ -172,6 +172,11 @@ def build_dataloader(data_dir, split, batch_size=16, num_workers=4, num_points=2
         num_points=num_points,
         image_size=image_size,
     )
+
+    # Giới hạn số objects nếu max_objects > 0 (cho CPU training)
+    if max_objects > 0 and len(dataset.object_ids) > max_objects:
+        dataset.object_ids = dataset.object_ids[:max_objects]
+        print(f"[Cap3DDataset] Limited to {max_objects} objects (CPU mode)")
 
     shuffle = split == "train"
     dataloader = DataLoader(
