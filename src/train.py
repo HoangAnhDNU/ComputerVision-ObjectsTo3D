@@ -171,15 +171,19 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # Giới hạn tài nguyên để giảm nhiệt máy
+    # Giới hạn tài nguyên để giảm nhiệt máy (chỉ trên local PC)
     torch.set_num_threads(4)
-    if device.type == "cuda":
+    if device.type == "cuda" and train_cfg.get("cooldown_seconds", 0) > 0:
         torch.cuda.set_per_process_memory_fraction(0.7, 0)
-        print(f"GPU memory limited to 70%")
+        print(f"GPU memory limited to 70% (local PC mode)")
+    elif device.type == "cuda":
+        print(f"GPU memory: full (Colab/server mode)")
 
-    # Data
+    # Data (hỗ trợ cả path tuyệt đối trên Colab và relative trên PC)
     project_root = Path(__file__).resolve().parent.parent
-    data_dir = os.path.join(project_root, data_cfg["data_dir"])
+    data_dir = data_cfg["data_dir"]
+    if not os.path.isabs(data_dir):
+        data_dir = os.path.join(project_root, data_dir)
 
     train_loader = build_dataloader(
         data_dir=data_dir, split="train",

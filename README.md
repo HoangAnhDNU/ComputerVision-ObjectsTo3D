@@ -50,13 +50,13 @@ Dataset: **Cap3D - ABO subset** (~7,930 objects từ Amazon, tổng ~40GB)
 pip install huggingface_hub
 
 # Tải captions
-huggingface-cli download tiange/Cap3D Cap3D_automated_ABO.csv --repo-type dataset --local-dir ./Cap3D_data
+hf download tiange/Cap3D Cap3D_automated_ABO.csv --repo-type dataset --local-dir ./Cap3D_data
 
 # Tải point clouds ABO
-huggingface-cli download tiange/Cap3D PointCloud_zips_ABO/compressed_pcs_00.zip --repo-type dataset --local-dir ./Cap3D_data
+hf download tiange/Cap3D PointCloud_zips_ABO/compressed_pcs_00.zip --repo-type dataset --local-dir ./Cap3D_data
 
 # Tải rendered images ABO
-huggingface-cli download tiange/Cap3D RenderedImage_perobj_zips_ABO/compressed_imgs_perobj_00.zip --repo-type dataset --local-dir ./Cap3D_data
+hf download tiange/Cap3D RenderedImage_perobj_zips_ABO/compressed_imgs_perobj_00.zip --repo-type dataset --local-dir ./Cap3D_data
 ```
 
 ### Bước 4: Chuẩn bị dữ liệu (giải nén + tạo splits)

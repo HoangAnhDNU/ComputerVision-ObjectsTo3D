@@ -22,10 +22,7 @@ def extract_pointclouds(data_dir: str) -> set:
     out_dir = os.path.join(data_dir, "pointclouds")
     os.makedirs(out_dir, exist_ok=True)
 
-    if not os.path.exists(zip_path):
-        raise FileNotFoundError(f"Không tìm thấy: {zip_path}")
-
-    # Kiểm tra đã giải nén chưa
+    # Kiểm tra đã giải nén chưa (kiểm tra TRƯỚC khi tìm zip)
     existing = set()
     for f in os.listdir(out_dir):
         if f.endswith(".ply"):
@@ -34,6 +31,9 @@ def extract_pointclouds(data_dir: str) -> set:
     if len(existing) > 0:
         print(f"[PointClouds] Đã có {len(existing)} files, bỏ qua giải nén.")
         return existing
+
+    if not os.path.exists(zip_path):
+        raise FileNotFoundError(f"Không tìm thấy: {zip_path}")
 
     print(f"[PointClouds] Đang giải nén {zip_path}...")
     extracted_ids = set()
@@ -65,10 +65,7 @@ def extract_rendered_images(data_dir: str) -> set:
     out_dir = os.path.join(data_dir, "rendered_images")
     os.makedirs(out_dir, exist_ok=True)
 
-    if not os.path.exists(zip_path):
-        raise FileNotFoundError(f"Không tìm thấy: {zip_path}")
-
-    # Kiểm tra đã giải nén chưa
+    # Kiểm tra đã giải nén chưa (kiểm tra TRƯỚC khi tìm zip)
     existing = set()
     for d in os.listdir(out_dir):
         if os.path.isdir(os.path.join(out_dir, d)):
@@ -76,6 +73,10 @@ def extract_rendered_images(data_dir: str) -> set:
 
     if len(existing) > 0:
         print(f"[RenderedImages] Đã có {len(existing)} folders, bỏ qua giải nén.")
+        return existing
+
+    if not os.path.exists(zip_path):
+        print(f"[RenderedImages] Không tìm thấy zip và chưa có dữ liệu giải nén.")
         return existing
 
     print(f"[RenderedImages] Đang giải nén {zip_path}...")
@@ -235,8 +236,12 @@ def main():
     print("\n--- BƯỚC 2: Giải nén point clouds ---")
     if args.skip_extract:
         pc_dir = os.path.join(data_dir, "pointclouds")
-        pc_ids = {f.replace(".ply", "") for f in os.listdir(pc_dir) if f.endswith(".ply")}
-        print(f"[PointClouds] Bỏ qua, đã có {len(pc_ids)} files")
+        if os.path.exists(pc_dir):
+            pc_ids = {f.replace(".ply", "") for f in os.listdir(pc_dir) if f.endswith(".ply")}
+            print(f"[PointClouds] Bỏ qua, đã có {len(pc_ids)} files")
+        else:
+            pc_ids = set()
+            print("[PointClouds] Chưa giải nén, thư mục không tồn tại")
     else:
         pc_ids = extract_pointclouds(data_dir)
 
