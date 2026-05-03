@@ -187,9 +187,11 @@ def main():
     else:
         print(f"WARNING: Checkpoint not found at {args.checkpoint}, using random weights")
 
-    # Data
+    # Data (hỗ trợ cả path tuyệt đối trên Colab và relative trên PC)
     project_root = Path(__file__).resolve().parent.parent
-    data_dir = os.path.join(project_root, config["data"]["data_dir"])
+    data_dir = config["data"]["data_dir"]
+    if not os.path.isabs(data_dir):
+        data_dir = os.path.join(project_root, data_dir)
 
     dataloader = build_dataloader(
         data_dir=data_dir, split=args.split,

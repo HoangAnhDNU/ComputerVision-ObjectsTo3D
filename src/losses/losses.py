@@ -85,17 +85,107 @@ def color_loss(pred_rgb, gt_rgb, nn_idx=None):
     return ((pred_rgb - gt_rgb) ** 2).mean()
 
 
+def repulsion_loss(pred_xyz, k=8, h=0.03, max_points=512):
+    """
+    Repulsion Loss: đẩy các điểm quá gần nhau ra xa.
+    Giảm hiện tượng tụ cụm (clustering), giúp phủ bề mặt đều hơn.
+
+    Với mỗi điểm, tìm k nearest neighbors, phạt nếu khoảng cách < h.
+    Loss = mean(max(0, h² - dist²)²) cho tất cả k-NN pairs.
+
+    Tiết kiệm VRAM: nếu N > max_points, random subsample để tránh O(N²) memory.
+
+    Args:
+        pred_xyz: [batch, N, 3]
+        k: số nearest neighbors để xét
+        h: ngưỡng khoảng cách (points gần hơn h bị phạt)
+        max_points: giới hạn số points để tính (tiết kiệm VRAM)
+    Returns:
+        loss: scalar
+    """
+    N = pred_xyz.size(1)
+
+    # Subsample nếu quá nhiều points (tránh O(N²) memory blowup)
+    if N > max_points:
+        idx = torch.randperm(N, device=pred_xyz.device)[:max_points]
+        pred_xyz = pred_xyz[:, idx, :]
+
+    # Pairwise distances: [B, N_sub, N_sub]
+    diff = pred_xyz.unsqueeze(2) - pred_xyz.unsqueeze(1)
+    dist_sq = (diff ** 2).sum(-1)
+
+    # Loại bỏ self-distance (set diagonal = inf)
+    diag_mask = torch.eye(dist_sq.size(1), device=dist_sq.device, dtype=torch.bool)
+    dist_sq = dist_sq.masked_fill(diag_mask.unsqueeze(0), float('inf'))
+
+    # k-nearest neighbors
+    k_actual = min(k, dist_sq.size(1) - 1)
+    knn_dist_sq, _ = dist_sq.topk(k_actual, dim=-1, largest=False)  # [B, N_sub, k]
+
+    # Repulsion: phạt nếu dist < h
+    h_sq = h * h
+    penalty = torch.clamp(h_sq - knn_dist_sq, min=0.0) ** 2
+
+    return penalty.mean()
+
+
+def uniformity_loss(pred_xyz, gt_xyz, nn_idx=None):
+    """
+    Uniformity Loss: phạt phân bố không đều bằng cách so sánh
+    local density giữa predicted và ground-truth point clouds.
+
+    Ý tưởng: Với mỗi pred point, xét GT nearest neighbor.
+    Nếu nhiều pred points cùng map đến 1 vùng GT → vùng khác bị trống.
+    Phạt variance của coverage counts.
+
+    Tiết kiệm VRAM: tái sử dụng nn_idx từ chamfer_distance (không cần tính lại [B,N,M]).
+
+    Args:
+        pred_xyz: [batch, N, 3]
+        gt_xyz: [batch, M, 3]
+        nn_idx: [batch, N] - index GT gần nhất (từ chamfer_distance, tiết kiệm VRAM)
+    Returns:
+        loss: scalar
+    """
+    if nn_idx is None:
+        # Fallback: tính lại (tốn VRAM)
+        diff = pred_xyz.unsqueeze(2) - gt_xyz.unsqueeze(1)
+        dist_sq = (diff ** 2).sum(-1)  # [B, N, M]
+        nn_idx = dist_sq.argmin(dim=2)  # [B, N]
+
+    batch, N = nn_idx.shape
+    M = gt_xyz.size(1)
+
+    # Đếm bao nhiêu pred points map đến mỗi GT point
+    counts = torch.zeros(batch, M, device=pred_xyz.device, dtype=pred_xyz.dtype)
+    ones = torch.ones(batch, N, device=pred_xyz.device, dtype=pred_xyz.dtype)
+    counts.scatter_add_(1, nn_idx, ones)  # [B, M]
+
+    # Lý tưởng: mỗi GT point có ~N/M pred points
+    # Phạt variance → buộc phân bố đều
+    mean_count = counts.mean(dim=1, keepdim=True)  # [B, 1]
+    variance = ((counts - mean_count) ** 2).mean(dim=1)  # [B]
+
+    return variance.mean()
+
+
 class MultiModal3DLoss(nn.Module):
     """
-    Combined loss: L = λ1·CD + λ2·EMD + λ3·Color
+    Combined loss: L = λ1·CD + λ2·EMD + λ3·Color + λ4·Repulsion + λ5·Uniform
     """
 
-    def __init__(self, lambda_cd=1.0, lambda_emd=0.5, lambda_color=0.2, use_emd=True):
+    def __init__(self, lambda_cd=1.0, lambda_emd=0.5, lambda_color=0.2,
+                 lambda_repulsion=0.1, lambda_uniform=0.05,
+                 use_emd=True, repulsion_k=8, repulsion_h=0.03):
         super().__init__()
         self.lambda_cd = lambda_cd
         self.lambda_emd = lambda_emd
         self.lambda_color = lambda_color
+        self.lambda_repulsion = lambda_repulsion
+        self.lambda_uniform = lambda_uniform
         self.use_emd = use_emd
+        self.repulsion_k = repulsion_k
+        self.repulsion_h = repulsion_h
 
     def forward(self, pred_outputs, gt_point_cloud):
         """
@@ -134,8 +224,23 @@ class MultiModal3DLoss(nn.Module):
         # Color loss (dùng NN alignment từ CD ở trên)
         c_loss = color_loss(pred_rgb, gt_rgb, nn_idx=nn_idx)
 
+        # Repulsion loss (chống tụ cụm, subsample để tiết kiệm VRAM)
+        rep_loss = torch.tensor(0.0, device=cd.device)
+        if self.lambda_repulsion > 0:
+            rep_loss = repulsion_loss(pred_xyz, k=self.repulsion_k, h=self.repulsion_h,
+                                     max_points=512)
+
+        # Uniformity loss (phân bố đều, tái dùng nn_idx từ CD)
+        uni_loss = torch.tensor(0.0, device=cd.device)
+        if self.lambda_uniform > 0:
+            uni_loss = uniformity_loss(pred_xyz, gt_xyz, nn_idx=nn_idx)
+
         # Total
-        total = self.lambda_cd * (cd + 0.5 * coarse_cd) + self.lambda_emd * emd + self.lambda_color * c_loss
+        total = (self.lambda_cd * (cd + 0.5 * coarse_cd)
+                 + self.lambda_emd * emd
+                 + self.lambda_color * c_loss
+                 + self.lambda_repulsion * rep_loss
+                 + self.lambda_uniform * uni_loss)
 
         return {
             "total": total,
@@ -143,4 +248,6 @@ class MultiModal3DLoss(nn.Module):
             "coarse_cd": coarse_cd,
             "emd": emd,
             "color_loss": c_loss,
+            "repulsion_loss": rep_loss,
+            "uniformity_loss": uni_loss,
         }

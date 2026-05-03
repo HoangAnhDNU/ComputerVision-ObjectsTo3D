@@ -231,8 +231,12 @@ def main():
     criterion = MultiModal3DLoss(
         lambda_cd=loss_cfg.get("lambda_cd", 1.0),
         lambda_emd=loss_cfg.get("lambda_emd", 0.5),
-        lambda_color=loss_cfg.get("lambda_color", 0.2),
-        use_emd=loss_cfg.get("use_emd", True),
+        lambda_color=loss_cfg.get("lambda_color", 0.5),
+        lambda_repulsion=loss_cfg.get("lambda_repulsion", 0.1),
+        lambda_uniform=loss_cfg.get("lambda_uniform", 0.05),
+        use_emd=loss_cfg.get("use_emd", False),
+        repulsion_k=loss_cfg.get("repulsion_k", 8),
+        repulsion_h=loss_cfg.get("repulsion_h", 0.03),
     )
 
     # Optimizer
@@ -305,7 +309,9 @@ def main():
             writer.add_scalar(f"val/{k}", v, epoch)
         writer.add_scalar("lr", current_lr, epoch)
 
-        print(f"  Train - Loss: {train_metrics['total']:.4f}, CD: {train_metrics['chamfer_distance']:.4f}")
+        rep_str = f", Rep: {train_metrics.get('repulsion_loss', 0):.4f}" if train_metrics.get('repulsion_loss', 0) > 0 else ""
+        uni_str = f", Uni: {train_metrics.get('uniformity_loss', 0):.4f}" if train_metrics.get('uniformity_loss', 0) > 0 else ""
+        print(f"  Train - Loss: {train_metrics['total']:.4f}, CD: {train_metrics['chamfer_distance']:.4f}, Color: {train_metrics.get('color_loss', 0):.4f}{rep_str}{uni_str}")
         print(f"  Val   - Loss: {val_metrics['total']:.4f}, CD: {val_metrics['chamfer_distance']:.4f}")
 
         # Save best model

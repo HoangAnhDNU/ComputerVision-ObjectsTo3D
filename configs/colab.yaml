@@ -1,24 +1,26 @@
-# Config tối ưu cho Google Colab T4 GPU (16GB VRAM)
-# So với default.yaml:
-#   - batch_size: 8 → 32 (T4 đủ VRAM)
-#   - epochs: 50 → 100 (Colab nhanh hơn)
-#   - lr: 0.0005 → 0.001 (batch lớn → LR cao hơn)
-#   - lambda_color: 0.2 → 0.5 (cải thiện màu sắc)
-#   - cooldown: 30 → 0 (không cần trên GPU server)
-#   - num_workers: 0 → 2
+# Config cho Google Colab (auto-generated bởi notebook Cell 12)
+# File này được ghi đè mỗi lần chạy Cell 12 trên Colab.
+# Giá trị dưới đây là mặc định cho Colab Pro A100.
+# Trên Colab, data_dir sẽ là path tuyệt đối trên Drive.
 
 data:
-  data_dir: "Cap3D_data"
+  data_dir: "Cap3D_data"      # Relative (PC) hoặc absolute (Colab)
   num_points: 2048
   image_size: 224
   batch_size: 32
   num_workers: 2
+  max_objects: 0               # 0 = dùng toàn bộ dataset
 
 model:
   clip_model: "ViT-B-32"
   pretrained: "laion2b_s34b_b79k"
   freeze_clip: true
-  fusion_type: "concat"
+  decoder_type: "transformer"    # "transformer" (mới, chất lượng cao) hoặc "mlp" (cũ)
+  decoder_width: 256
+  decoder_layers: 4
+  decoder_heads: 4
+  fine_layers: 2
+  fusion_type: "concat"          # Chỉ dùng khi decoder_type=mlp
   fused_dim: 512
   coarse_points: 256
   fine_points: 2048
@@ -27,14 +29,18 @@ training:
   epochs: 100
   lr: 0.001
   weight_decay: 0.01
-  warmup_epochs: 3
+  warmup_epochs: 5
   patience: 25
-  cooldown_seconds: 0
+  cooldown_seconds: 0          # 0 = Colab mode, >0 = local PC mode
 
 loss:
   lambda_cd: 1.0
   lambda_emd: 0.5
   lambda_color: 0.5
+  lambda_repulsion: 0.1           # Chống tụ cụm → giảm lỗ chỗ
+  lambda_uniform: 0.05            # Phân bố đều → bao phủ bề mặt
+  repulsion_k: 8                  # Số k-NN để xét repulsion
+  repulsion_h: 0.03               # Ngưỡng khoảng cách repulsion
   use_emd: false
 
 logging:

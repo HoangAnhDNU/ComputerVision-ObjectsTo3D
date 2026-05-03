@@ -14,6 +14,10 @@ from src.models.decoder import PointCloudDecoder
 class Multimodal3DModel(nn.Module):
     """
     Input: (image, text) → Output: point cloud [batch, num_points, 6]
+
+    Hỗ trợ 2 loại decoder:
+    - "mlp": ConcatFusion + MLP decoder (cũ, nhẹ)
+    - "transformer": Cross-Attention Transformer decoder (mới, chất lượng cao)
     """
 
     def __init__(
@@ -21,12 +25,23 @@ class Multimodal3DModel(nn.Module):
         clip_model="ViT-B-32",
         pretrained="laion2b_s34b_b79k",
         freeze_clip=True,
+        # Decoder selection
+        decoder_type="mlp",
+        # Transformer decoder params
+        decoder_width=256,
+        decoder_layers=4,
+        decoder_heads=4,
+        fine_layers=2,
+        # MLP decoder params (legacy)
         fusion_type="concat",
         fused_dim=512,
+        # Shared
         coarse_points=256,
         fine_points=2048,
     ):
         super().__init__()
+
+        self.decoder_type = decoder_type
 
         # Encoders
         self.encoders = CLIPEncoders(
@@ -36,26 +51,37 @@ class Multimodal3DModel(nn.Module):
         )
         embed_dim = self.encoders.embed_dim
 
-        # Fusion
-        if fusion_type == "cross_attention":
-            self.fusion = CrossAttentionFusion(
-                image_dim=embed_dim,
-                text_dim=embed_dim,
-                fused_dim=fused_dim,
+        if decoder_type == "transformer":
+            # Transformer decoder: dùng grid features + cross-attention
+            from src.models.transformer_decoder import TransformerPointDecoder
+            self.decoder = TransformerPointDecoder(
+                cond_dim=embed_dim,
+                width=decoder_width,
+                coarse_points=coarse_points,
+                fine_points=fine_points,
+                coarse_layers=decoder_layers,
+                fine_layers=fine_layers,
+                heads=decoder_heads,
             )
         else:
-            self.fusion = ConcatFusion(
-                image_dim=embed_dim,
-                text_dim=embed_dim,
-                fused_dim=fused_dim,
+            # Legacy MLP decoder: ConcatFusion + PointCloudDecoder
+            if fusion_type == "cross_attention":
+                self.fusion = CrossAttentionFusion(
+                    image_dim=embed_dim,
+                    text_dim=embed_dim,
+                    fused_dim=fused_dim,
+                )
+            else:
+                self.fusion = ConcatFusion(
+                    image_dim=embed_dim,
+                    text_dim=embed_dim,
+                    fused_dim=fused_dim,
+                )
+            self.decoder = PointCloudDecoder(
+                input_dim=fused_dim,
+                coarse_points=coarse_points,
+                fine_points=fine_points,
             )
-
-        # Decoder
-        self.decoder = PointCloudDecoder(
-            input_dim=fused_dim,
-            coarse_points=coarse_points,
-            fine_points=fine_points,
-        )
 
         self.fusion_type = fusion_type
 
@@ -67,15 +93,17 @@ class Multimodal3DModel(nn.Module):
         Returns:
             dict với point_cloud [batch, fine_points, 6] và intermediate outputs
         """
-        # Encode
-        image_features = self.encoders.encode_image(image)
-        text_features = self.encoders.encode_text(text_tokens)
-
-        # Fuse
-        fused_features = self.fusion(image_features, text_features)
-
-        # Decode
-        outputs = self.decoder(fused_features)
+        if self.decoder_type == "transformer":
+            # Grid features: [B, 49, embed_dim] (thông tin spatial)
+            image_grid = self.encoders.encode_image_grid(image)
+            text_features = self.encoders.encode_text(text_tokens)
+            outputs = self.decoder(image_grid, text_features)
+        else:
+            # CLS token: [B, embed_dim] (legacy)
+            image_features = self.encoders.encode_image(image)
+            text_features = self.encoders.encode_text(text_tokens)
+            fused_features = self.fusion(image_features, text_features)
+            outputs = self.decoder(fused_features)
 
         return outputs
 
@@ -104,6 +132,11 @@ def build_model(config):
         clip_model=model_cfg.get("clip_model", "ViT-B-32"),
         pretrained=model_cfg.get("pretrained", "laion2b_s34b_b79k"),
         freeze_clip=model_cfg.get("freeze_clip", True),
+        decoder_type=model_cfg.get("decoder_type", "mlp"),
+        decoder_width=model_cfg.get("decoder_width", 256),
+        decoder_layers=model_cfg.get("decoder_layers", 4),
+        decoder_heads=model_cfg.get("decoder_heads", 4),
+        fine_layers=model_cfg.get("fine_layers", 2),
         fusion_type=model_cfg.get("fusion_type", "concat"),
         fused_dim=model_cfg.get("fused_dim", 512),
         coarse_points=model_cfg.get("coarse_points", 256),
