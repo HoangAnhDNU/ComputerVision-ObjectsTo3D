@@ -61,7 +61,7 @@ def cos_pi(x):
     return math.cos(math.pi * x)
 
 
-def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_every=10, save_every=50, ckpt_dir=None, best_val_cd=float("inf"), patience_counter=0, config=None):
+def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_every=10, save_every=50, ckpt_dir=None, best_val_cd=float("inf"), patience_counter=0, config=None, epoch_0idx=0):
     model.train()
     total_loss = 0.0
     loss_details = {"chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0}
@@ -102,12 +102,12 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_
             pbar.set_postfix(loss=f"{avg:.4f}", cd=f"{loss_details['chamfer_distance']/num_batches:.4f}")
 
         # Save checkpoint mid-epoch để tránh mất progress khi Colab timeout
-        # Dùng atomic save (write to tmp then rename) để tránh file hỏng
+        # Lưu epoch - 1 (epoch trước đã hoàn thành) để resume chạy LẠI epoch hiện tại
         if ckpt_dir and (batch_idx + 1) % save_every == 0:
             last_path = os.path.join(ckpt_dir, "last_model.pth")
             tmp_path = last_path + ".tmp"
             torch.save({
-                "epoch": epoch,
+                "epoch": epoch_0idx - 1,
                 "batch_idx": batch_idx,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
@@ -116,7 +116,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_
                 "config": config,
             }, tmp_path)
             os.replace(tmp_path, last_path)
-            pbar.write(f"  Checkpoint saved at batch {batch_idx + 1}")
+            pbar.write(f"  Mid-epoch checkpoint saved at batch {batch_idx + 1}")
 
     metrics = {k: v / num_batches for k, v in loss_details.items()}
     metrics["total"] = total_loss / num_batches
@@ -297,6 +297,7 @@ def main():
             best_val_cd=best_val_cd,
             patience_counter=patience_counter,
             config=config,
+            epoch_0idx=epoch,
         )
 
         # Validate
@@ -314,12 +315,13 @@ def main():
         print(f"  Train - Loss: {train_metrics['total']:.4f}, CD: {train_metrics['chamfer_distance']:.4f}, Color: {train_metrics.get('color_loss', 0):.4f}{rep_str}{uni_str}")
         print(f"  Val   - Loss: {val_metrics['total']:.4f}, CD: {val_metrics['chamfer_distance']:.4f}")
 
-        # Save best model
+        # Save best model (atomic save)
         val_cd = val_metrics["chamfer_distance"]
         if val_cd < best_val_cd:
             best_val_cd = val_cd
             patience_counter = 0
             best_path = os.path.join(ckpt_dir, "best_model.pth")
+            tmp_path = best_path + ".tmp"
             torch.save({
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
@@ -327,7 +329,8 @@ def main():
                 "best_val_cd": best_val_cd,
                 "patience_counter": patience_counter,
                 "config": config,
-            }, best_path)
+            }, tmp_path)
+            os.replace(tmp_path, best_path)
             print(f"  ** Best model saved! CD={best_val_cd:.4f}")
         else:
             patience_counter += 1

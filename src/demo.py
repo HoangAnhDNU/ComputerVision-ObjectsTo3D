@@ -30,15 +30,16 @@ except ImportError:
     print("[WARN] open3d không có, dùng trimesh fallback (mesh chất lượng thấp hơn)")
 
 
-def densify_point_cloud(pc, iterations=2, num_neighbors=5):
+def densify_point_cloud(pc, iterations=2, num_neighbors=5, max_dist=0.15):
     """
-    Tăng mật độ point cloud nhiều lần bằng interpolation.
-    Mỗi iteration tăng ~num_neighbors lần số điểm.
+    Tăng mật độ point cloud bằng adaptive interpolation.
+    Chỉ tạo điểm mới giữa các cặp gần nhau (< max_dist) → tránh lấp lỗ sai.
 
     Args:
         pc: numpy [N, 6] (XYZ + RGB)
         iterations: số lần densify
         num_neighbors: số neighbors để interpolate
+        max_dist: khoảng cách tối đa để interpolate (tránh nối qua lỗ)
     Returns:
         numpy [M, 6] với M >> N
     """
@@ -48,24 +49,27 @@ def densify_point_cloud(pc, iterations=2, num_neighbors=5):
         xyz = pc[:, :3]
         rgb = pc[:, 3:]
         tree = cKDTree(xyz)
-        _, indices = tree.query(xyz, k=num_neighbors + 1)
+        dists, indices = tree.query(xyz, k=num_neighbors + 1)
 
         new_points = []
         for i in range(len(xyz)):
             for j in range(1, num_neighbors + 1):
                 nn_idx = indices[i, j]
-                # Interpolate tại 1/3 và 2/3 khoảng cách
-                for alpha in [0.33, 0.67]:
-                    mid_xyz = xyz[i] * (1 - alpha) + xyz[nn_idx] * alpha
-                    mid_rgb = rgb[i] * (1 - alpha) + rgb[nn_idx] * alpha
-                    new_points.append(np.concatenate([mid_xyz, mid_rgb]))
+                d = dists[i, j]
+                # Chỉ interpolate giữa cặp gần nhau
+                if d < max_dist:
+                    for alpha in [0.25, 0.5, 0.75]:
+                        mid_xyz = xyz[i] * (1 - alpha) + xyz[nn_idx] * alpha
+                        mid_rgb = rgb[i] * (1 - alpha) + rgb[nn_idx] * alpha
+                        new_points.append(np.concatenate([mid_xyz, mid_rgb]))
 
         if new_points:
             new_pc = np.array(new_points, dtype=np.float32)
             pc = np.concatenate([pc, new_pc], axis=0)
 
             # Voxel downsampling để giữ mật độ đều
-            pc = voxel_downsample(pc, voxel_size=0.02)
+            voxel = 0.015 if it == 0 else 0.01
+            pc = voxel_downsample(pc, voxel_size=voxel)
 
     return pc
 
@@ -99,6 +103,31 @@ def smooth_point_cloud(pc, num_neighbors=10, iterations=1):
         ])
 
     return pc.astype(np.float32)
+
+
+def remove_statistical_outliers(pc, num_neighbors=16, std_ratio=1.5):
+    """Loại bỏ outliers dựa trên khoảng cách trung bình đến k-neighbors."""
+    if pc.shape[0] <= num_neighbors + 1:
+        return pc
+
+    from scipy.spatial import cKDTree
+
+    xyz = pc[:, :3]
+    tree = cKDTree(xyz)
+    dists, _ = tree.query(xyz, k=num_neighbors + 1)
+    mean_d = np.mean(dists[:, 1:], axis=1)
+
+    stat_threshold = mean_d.mean() + std_ratio * mean_d.std()
+    quantile_threshold = np.quantile(mean_d, 0.98)
+    threshold = max(stat_threshold, quantile_threshold)
+    keep = mean_d <= threshold
+
+    # Tránh lọc quá mạnh khi điểm còn ít hoặc có chi tiết mảnh
+    min_keep = max(1024, int(0.75 * len(pc)))
+    if int(np.sum(keep)) < min_keep:
+        return pc
+
+    return pc[keep]
 
 
 def point_cloud_to_mesh_o3d(point_cloud, method="poisson"):
@@ -311,21 +340,36 @@ class DemoApp:
         quality: "low", "medium", "high"
         """
         if quality == "low":
-            return pc
+            pc = smooth_point_cloud(pc, num_neighbors=6, iterations=1)
         elif quality == "medium":
-            pc = densify_point_cloud(pc, iterations=1, num_neighbors=3)
+            pc = densify_point_cloud(pc, iterations=1, num_neighbors=3, max_dist=0.10)
             pc = smooth_point_cloud(pc, num_neighbors=8, iterations=1)
         else:  # high
-            pc = densify_point_cloud(pc, iterations=2, num_neighbors=5)
-            pc = smooth_point_cloud(pc, num_neighbors=10, iterations=2)
+            # Giữ chi tiết mảnh (chân ghế) nên không lọc sớm quá mạnh
+            pc = densify_point_cloud(pc, iterations=2, num_neighbors=5, max_dist=0.12)
+            pc = smooth_point_cloud(pc, num_neighbors=9, iterations=1)
+
+        # Lọc outliers sau khi densify/smooth
+        pc = remove_statistical_outliers(pc, num_neighbors=18, std_ratio=2.4)
+
+        # Giữ point cloud gọn hơn để nhìn rõ hình khối
+        if len(pc) > 28000:
+            pc = voxel_downsample(pc, voxel_size=0.006)
+
         return pc
 
     def _create_plotly_figure(self, pc, title="3D Point Cloud"):
         """Tạo Plotly figure chất lượng cao."""
         import plotly.graph_objects as go
 
-        xyz = pc[:, :3]
-        rgb = np.clip(pc[:, 3:], 0, 1)
+        display_pc = pc
+        max_show_points = 20000
+        if len(pc) > max_show_points:
+            idx = np.random.choice(len(pc), max_show_points, replace=False)
+            display_pc = pc[idx]
+
+        xyz = display_pc[:, :3]
+        rgb = np.clip(display_pc[:, 3:], 0, 1)
 
         # Point cloud scatter
         colors = [f'rgb({int(r*255)},{int(g*255)},{int(b*255)})' for r, g, b in rgb]
@@ -334,7 +378,7 @@ class DemoApp:
             x=xyz[:, 0], y=xyz[:, 1], z=xyz[:, 2],
             mode='markers',
             marker=dict(
-                size=2.5,
+                size=3.0,
                 color=colors,
                 opacity=0.95,
                 line=dict(width=0),
@@ -357,7 +401,7 @@ class DemoApp:
             paper_bgcolor='rgb(20,20,25)',
             margin=dict(l=0, r=0, b=0, t=30),
             height=550,
-            title=dict(text=f"{title} ({len(pc)} points)", font=dict(color='white', size=14)),
+            title=dict(text=f"{title} ({len(display_pc)}/{len(pc)} points)", font=dict(color='white', size=14)),
         )
 
         return fig

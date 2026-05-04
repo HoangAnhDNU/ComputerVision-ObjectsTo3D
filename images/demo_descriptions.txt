@@ -34,3 +34,19 @@ Mo ta (EN): A modern console table with a rectangular top and sturdy legs, featu
 
 Anh 8: demo_8_usb_cable.png
 Mo ta (EN): A flexible USB-C cable with a rounded loop design, featuring a flat connector at one end and a standard connector at the other. The cable is uniform in a light gray color.
+(Luu y: Object nay qua mong/phang, kho tao 3D tot)
+
+Anh 9: demo_9_chair.png
+Mo ta (EN): A white wooden chair featuring a padded seat and an intricately designed backrest with curved latticework. The legs are slightly tapered and square, enhancing its classic aesthetic.
+
+Anh 10: demo_10_dumbbell.png
+Mo ta (EN): A solid hexagonal weight with a smooth surface. It features a central cylindrical grip flanked by two hexagonal ends, designed for easy handling. The overall color is a uniform green.
+
+Anh 11: demo_11_dining_set.png
+Mo ta (EN): A white wooden table with a rectangular top and four sturdy legs, accompanied by two matching high-backed chairs. The chairs feature a simple design with horizontal slats in the backrest.
+
+Anh 12: demo_12_laptop_bag.png
+Mo ta (EN): A sleek, modern computer bag featuring a smooth, textured surface. It includes double handles and a removable shoulder strap for versatile carrying options.
+
+Anh 13: demo_13_shelving_unit.png
+Mo ta (EN): A tall, multi-tiered shelving unit made from wire, featuring four open mesh shelves and a sleek, minimal design. It is supported by vertical rods with small round footings.
