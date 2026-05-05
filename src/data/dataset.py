@@ -60,8 +60,8 @@ class Cap3DDataset(Dataset):
         # Đường dẫn ABO
         self.pc_dir = os.path.join(data_dir, "pointclouds")
         self.pt_dir = os.path.join(data_dir, "pointclouds_pt")
-        # Đường dẫn ShapeNet
-        self.sn_pc_dir = os.path.join(data_dir, "shapenet", "pointclouds")
+        # Đường dẫn ShapeNet (.ply nằm trong ShapeNet_pcs/, .pt nằm trong pointclouds_pt/)
+        self.sn_pc_dir = os.path.join(data_dir, "shapenet", "ShapeNet_pcs")
         self.sn_pt_dir = os.path.join(data_dir, "shapenet", "pointclouds_pt")
         # Ưu tiên ảnh đã lọc background (MatAlpha mask), fallback ảnh gốc
         masked_dir = os.path.join(data_dir, "rendered_images_masked")
@@ -93,8 +93,7 @@ class Cap3DDataset(Dataset):
         for pt_dir in [self.pt_dir, self.sn_pt_dir]:
             pt_path = os.path.join(pt_dir, f"{obj_id}.pt")
             if os.path.exists(pt_path):
-                import torch
-                pc = torch.load(pt_path, map_location='cpu').numpy()
+                pc = torch.load(pt_path, map_location='cpu', weights_only=True).numpy()
                 # .pt format: [:, :3] = XYZ, [:, 3:] = RGB normalized [-1,1] → convert về [0,1]
                 pc[:, 3:] = (pc[:, 3:] + 1.0) / 2.0
                 return pc

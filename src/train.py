@@ -64,7 +64,7 @@ def cos_pi(x):
 def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_every=10, save_every=50, ckpt_dir=None, best_val_cd=float("inf"), patience_counter=0, config=None, epoch_0idx=0):
     model.train()
     total_loss = 0.0
-    loss_details = {"chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0, "normal_loss": 0.0}
+    loss_details = {"chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0, "normal_loss": 0.0, "repulsion_loss": 0.0, "uniformity_loss": 0.0}
     num_batches = 0
 
     pbar = tqdm(dataloader, desc=f"Epoch {epoch} [Train]")
@@ -127,7 +127,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_
 def validate(model, dataloader, criterion, device, epoch):
     model.eval()
     total_loss = 0.0
-    loss_details = {"chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0, "normal_loss": 0.0}
+    loss_details = {"chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0, "normal_loss": 0.0, "repulsion_loss": 0.0, "uniformity_loss": 0.0}
     num_batches = 0
 
     pbar = tqdm(dataloader, desc=f"Epoch {epoch} [Val]")
@@ -149,6 +149,9 @@ def validate(model, dataloader, criterion, device, epoch):
 
         avg = total_loss / num_batches
         pbar.set_postfix(loss=f"{avg:.4f}", cd=f"{loss_details['chamfer_distance']/num_batches:.4f}")
+
+    if num_batches == 0:
+        return {"total": 0.0, "chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0, "normal_loss": 0.0, "repulsion_loss": 0.0, "uniformity_loss": 0.0}
 
     metrics = {k: v / num_batches for k, v in loss_details.items()}
     metrics["total"] = total_loss / num_batches

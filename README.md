@@ -83,8 +83,11 @@ hf download tiange/Cap3D PointCloud_zips_ShapeNet/compressed_pcs_00.zip --repo-t
 # Chỉ ABO
 python src/data/prepare_data.py --data-dir Cap3D_data
 
-# ABO + ShapeNet (nếu đã tải shapenet/pointclouds/)
-python src/data/prepare_data.py --data-dir Cap3D_data --include-shapenet
+# ABO + ShapeNet (auto-detect shapenet/ShapeNet_pcs/ - không cần flag)
+python src/data/prepare_data.py --data-dir Cap3D_data --skip-extract --skip-images
+
+# Chỉ ABO (bỏ qua ShapeNet dù có data)
+python src/data/prepare_data.py --data-dir Cap3D_data --no-shapenet
 ```
 
 Script này sẽ:
@@ -146,8 +149,8 @@ ThiGiacMayTinh_BaiTapLon/
 │   ├── rendered_images/              # ABO rendered images (RGB + depth + mask)
 │   ├── rendered_images_masked/       # ABO images sau MatAlpha mask
 │   ├── shapenet/
-│   │   ├── pointclouds/              # ShapeNet point clouds (.ply)
-│   │   └── pointclouds_pt/           # ShapeNet point clouds (.pt)
+│   │   ├── ShapeNet_pcs/             # ShapeNet point clouds (.ply)
+│   │   └── pointclouds_pt/           # ShapeNet point clouds (.pt, load nhanh)
 │   └── splits/                       # train.txt, val.txt, test.txt
 ├── src/
 │   ├── data/

@@ -26,9 +26,12 @@ Desktop.ini
 # Data (quá nặng cho GitHub)
 Cap3D_data/pointclouds/
 Cap3D_data/rendered_images/
+Cap3D_data/rendered_images_masked/
+Cap3D_data/shapenet/
+Cap3D_data/splits/
+Cap3D_data/captions.json
 Cap3D_data/Cap3D_automated_ABO.csv
 Cap3D_data/Cap3D_automated_ShapeNet.csv
-Cap3D_data/shapenet/ShapeNet_pcs/
 
 # Model checkpoints (~1.5GB mỗi file)
 checkpoints/*.pth

@@ -266,7 +266,12 @@ def main():
     parser.add_argument(
         "--include-shapenet",
         action="store_true",
-        help="Gộp ShapeNet vào splits (cần Cap3D_automated_ShapeNet.csv + shapenet/pointclouds/)",
+        help="[Deprecated] ShapeNet được auto-detect từ shapenet/ShapeNet_pcs/ - không cần truyền flag này",
+    )
+    parser.add_argument(
+        "--no-shapenet",
+        action="store_true",
+        help="Bỏ qua ShapeNet, chỉ dùng ABO",
     )
     args = parser.parse_args()
 
@@ -306,15 +311,16 @@ def main():
 
     # 4. Kiểm tra tính toàn vẹn ABO
     print("\n--- BƯỚC 4: Kiểm tra dữ liệu ABO ---")
-    valid_ids = verify_data(captions, pc_ids, img_ids, require_images=True)
+    require_imgs = len(img_ids) > 0
+    valid_ids = verify_data(captions, pc_ids, img_ids, require_images=require_imgs)
 
-    # 4b. Gộp ShapeNet nếu có
-    if args.include_shapenet:
+    # 4b. Gộp ShapeNet (auto-detect - không cần --include-shapenet)
+    if not args.no_shapenet:
         print("\n--- BƯỚC 4b: Gộp ShapeNet ---")
         sn_captions = parse_shapenet_captions(data_dir)
 
         # Tìm ShapeNet point clouds (hỗ trợ cả .ply và .pt)
-        sn_pc_dir = os.path.join(data_dir, "shapenet", "pointclouds")
+        sn_pc_dir = os.path.join(data_dir, "shapenet", "ShapeNet_pcs")
         sn_pc_ids = set()
         if os.path.exists(sn_pc_dir):
             sn_pc_ids = {f.replace(".ply", "") for f in os.listdir(sn_pc_dir) if f.endswith(".ply")}
@@ -348,7 +354,7 @@ def main():
     print("\n" + "=" * 60)
     print("HOÀN THÀNH CHUẨN BỊ DỮ LIỆU!")
     print(f"  - ABO point clouds: {os.path.join(data_dir, 'pointclouds')}")
-    print(f"  - ShapeNet point clouds: {os.path.join(data_dir, 'shapenet', 'pointclouds')}")
+    print(f"  - ShapeNet point clouds: {os.path.join(data_dir, 'shapenet', 'ShapeNet_pcs')}")
     print(f"  - Rendered images: {os.path.join(data_dir, 'rendered_images')}")
     print(f"  - Captions JSON: {os.path.join(data_dir, 'captions.json')}")
     print(f"  - Splits: {os.path.join(data_dir, 'splits')}")
