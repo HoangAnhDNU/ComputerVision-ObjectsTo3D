@@ -113,6 +113,36 @@ class CLIPEncoders(nn.Module):
 
         return grid.float()
 
+    def encode_multi_view(self, images):
+        """
+        Encode K views và aggregate theo DiffuRank-inspired mean pooling.
+
+        Args:
+            images: [B, K, 3, 224, 224]
+        Returns:
+            aggregated: [B, embed_dim]
+        """
+        B, K = images.shape[:2]
+        flat = images.view(B * K, *images.shape[2:])  # [B*K, 3, 224, 224]
+        features = self.encode_image(flat)             # [B*K, embed_dim]
+        features = features.view(B, K, -1)             # [B, K, embed_dim]
+        return features.mean(dim=1)                    # [B, embed_dim]
+
+    def encode_image_grid_multi(self, images):
+        """
+        Extract spatial grid features từ tất cả K views, concat lại.
+        Dùng cho Transformer decoder (cross-attention với K*49 patches).
+
+        Args:
+            images: [B, K, 3, 224, 224]
+        Returns:
+            grid: [B, K*num_patches, embed_dim]
+        """
+        B, K = images.shape[:2]
+        flat = images.view(B * K, *images.shape[2:])  # [B*K, 3, 224, 224]
+        grid = self.encode_image_grid(flat)            # [B*K, num_patches, embed_dim]
+        return grid.view(B, K * grid.size(1), -1)      # [B, K*num_patches, embed_dim]
+
     def encode_text(self, text_tokens):
         """
         Encode text tokens thành feature vector.

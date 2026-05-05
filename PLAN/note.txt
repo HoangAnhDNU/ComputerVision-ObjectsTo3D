@@ -1,0 +1,2 @@
+- Chuẩn hóa caption sang tiếng việt, sau đó thống kê lại số nhãn
+- Hiển thị các độ đo đánh giá

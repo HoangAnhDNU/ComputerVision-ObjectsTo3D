@@ -64,7 +64,7 @@ def cos_pi(x):
 def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_every=10, save_every=50, ckpt_dir=None, best_val_cd=float("inf"), patience_counter=0, config=None, epoch_0idx=0):
     model.train()
     total_loss = 0.0
-    loss_details = {"chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0}
+    loss_details = {"chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0, "normal_loss": 0.0}
     num_batches = 0
 
     pbar = tqdm(dataloader, desc=f"Epoch {epoch} [Train]")
@@ -127,7 +127,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_
 def validate(model, dataloader, criterion, device, epoch):
     model.eval()
     total_loss = 0.0
-    loss_details = {"chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0}
+    loss_details = {"chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0, "normal_loss": 0.0}
     num_batches = 0
 
     pbar = tqdm(dataloader, desc=f"Epoch {epoch} [Val]")
@@ -157,7 +157,7 @@ def validate(model, dataloader, criterion, device, epoch):
 
 def main():
     parser = argparse.ArgumentParser(description="Train Multimodal 3D Model")
-    parser.add_argument("--config", type=str, default="configs/default.yaml", help="Path to config file")
+    parser.add_argument("--config", type=str, default="configs/colab.yaml", help="Path to config file")
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume")
     parser.add_argument("--data-dir", type=str, default=None, help="Override data dir in config")
     parser.add_argument("--epochs", type=int, default=None, help="Override epochs")
@@ -205,6 +205,7 @@ def main():
         data_dir = os.path.join(project_root, data_dir)
 
     max_objects = data_cfg.get("max_objects", 0)
+    num_views = data_cfg.get("num_views", 1)
     train_loader = build_dataloader(
         data_dir=data_dir, split="train",
         batch_size=data_cfg["batch_size"],
@@ -212,6 +213,7 @@ def main():
         num_points=data_cfg["num_points"],
         image_size=data_cfg["image_size"],
         max_objects=max_objects,
+        num_views=num_views,
     )
     val_loader = build_dataloader(
         data_dir=data_dir, split="val",
@@ -220,6 +222,7 @@ def main():
         num_points=data_cfg["num_points"],
         image_size=data_cfg["image_size"],
         max_objects=max_objects // 5 if max_objects > 0 else 0,
+        num_views=num_views,
     )
 
     # Model
@@ -234,9 +237,11 @@ def main():
         lambda_color=loss_cfg.get("lambda_color", 0.5),
         lambda_repulsion=loss_cfg.get("lambda_repulsion", 0.1),
         lambda_uniform=loss_cfg.get("lambda_uniform", 0.05),
+        lambda_normal=loss_cfg.get("lambda_normal", 0.0),
         use_emd=loss_cfg.get("use_emd", False),
         repulsion_k=loss_cfg.get("repulsion_k", 8),
         repulsion_h=loss_cfg.get("repulsion_h", 0.03),
+        normal_k=loss_cfg.get("normal_k", 8),
     )
 
     # Optimizer
@@ -292,7 +297,7 @@ def main():
         train_metrics = train_one_epoch(
             model, train_loader, criterion, optimizer, device, epoch + 1,
             log_every=log_cfg.get("log_every", 10),
-            save_every=50,  # Save checkpoint mỗi 50 batches
+            save_every=log_cfg.get("save_every", 50),  # Save checkpoint mỗi N batches
             ckpt_dir=ckpt_dir,
             best_val_cd=best_val_cd,
             patience_counter=patience_counter,

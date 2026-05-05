@@ -1,52 +1,68 @@
 ============================================================
-ANH DEMO VA GOI Y MO TA VAN BAN
-Du an: Tao mo hinh 3D tu anh va mo ta van ban
+ẢNH DEMO VÀ GỢI Ý MÔ TẢ VĂN BẢN
+Dự án: Tạo mô hình 3D từ ảnh và mô tả văn bản
 ============================================================
 
-Cach dung:
-  1. Mo Gradio demo: python src/demo.py
-  2. Upload 1 anh .png tu folder nay
-  3. Copy mo ta tuong ung vao o 'Text description'
-  4. Nhan 'Generate 3D'
+Cách dùng:
+  1. Mở Gradio demo: python src/demo.py
+  2. Upload 1 ảnh .png từ folder này
+  3. Copy mô tả tiếng Việt tương ứng vào ô 'Mô tả văn bản'
+  4. Nhấn '✨ Tạo Mô Hình 3D'
+
+Lưu ý: Demo hỗ trợ cả tiếng Việt lẫn tiếng Anh.
+        Nên dùng tiếng Việt để kiểm tra tính năng đa ngôn ngữ.
 
 ------------------------------------------------------------
 
-Anh 1: demo_1_cabinet.png
-Mo ta (EN): A decorative storage cabinet featuring a smooth, rectangular top, an open compartment in the front for easy access, and distinct side cutouts. It has a classic design with a drawer at the top and a door below, adorned with ornamental hardware.
+Ảnh 1: demo_1_cabinet.png
+Mô tả (VI): Một tủ đựng đồ trang trí với mặt trên hình chữ nhật nhẵn, ngăn mở phía trước và các ô cắt hai bên. Thiết kế cổ điển với ngăn kéo ở trên và cánh cửa bên dưới, trang trí bằng phụ kiện kim loại.
+Mô tả (EN): A decorative storage cabinet featuring a smooth, rectangular top, an open compartment in the front for easy access, and distinct side cutouts. It has a classic design with a drawer at the top and a door below, adorned with ornamental hardware.
 
-Anh 2: demo_2_waste_bin.png
-Mo ta (EN): A cylindrical waste bin with a smooth, glossy white exterior, featuring a built-in handle on one side for easy maneuverability. It has a retractable power cord neatly secured to the side, and four small, sturdy wheels for mobility.
+Ảnh 2: demo_2_waste_bin.png
+Mô tả (VI): Một thùng rác hình trụ với vỏ ngoài trắng bóng, có tay cầm tích hợp một bên và dây nguồn thu vào gọn gàng. Thùng có bốn bánh xe nhỏ chắc chắn để di chuyển dễ dàng.
+Mô tả (EN): A cylindrical waste bin with a smooth, glossy white exterior, featuring a built-in handle on one side for easy maneuverability. It has a retractable power cord neatly secured to the side, and four small, sturdy wheels for mobility.
 
-Anh 3: demo_3_nesting_tables.png
-Mo ta (EN): A set of three nesting tables, each with a slightly smaller size than the next. They feature a simple, elegant design with straight legs and a smooth surface, made from light-colored wood.
+Ảnh 3: demo_3_nesting_tables.png
+Mô tả (VI): Bộ ba bàn lồng nhau với kích thước giảm dần. Thiết kế đơn giản, thanh lịch với chân thẳng và mặt phẳng nhẵn, làm từ gỗ màu sáng.
+Mô tả (EN): A set of three nesting tables, each with a slightly smaller size than the next. They feature a simple, elegant design with straight legs and a smooth surface, made from light-colored wood.
 
-Anh 4: demo_4_console_table.png
-Mo ta (EN): A wooden console table with a smooth, white finish. It features a rectangular top surface, a pair of drawers with circular metal knobs, and an arched cutout beneath the drawers.
+Ảnh 4: demo_4_console_table.png
+Mô tả (VI): Một bàn console bằng gỗ với lớp sơn trắng nhẵn. Bàn có mặt trên hình chữ nhật, hai ngăn kéo với núm tròn bằng kim loại và một ô cắt hình vòm bên dưới.
+Mô tả (EN): A wooden console table with a smooth, white finish. It features a rectangular top surface, a pair of drawers with circular metal knobs, and an arched cutout beneath the drawers.
 
-Anh 5: demo_5_wooden_console.png
-Mo ta (EN): A multi-functional wooden console featuring a smooth rectangular top surface and a lower compartment with two doors. The design includes an open shelf above the doors, providing additional storage space.
+Ảnh 5: demo_5_wooden_console.png
+Mô tả (VI): Một kệ gỗ đa năng với mặt trên hình chữ nhật nhẵn và ngăn dưới có hai cánh cửa. Thiết kế gồm kệ mở phía trên cửa để tăng thêm không gian lưu trữ.
+Mô tả (EN): A multi-functional wooden console featuring a smooth rectangular top surface and a lower compartment with two doors. The design includes an open shelf above the doors, providing additional storage space.
 
-Anh 6: demo_6_chest_of_drawers.png
-Mo ta (EN): A compact wooden cabinet with a smooth rectangular top, featuring a combination of drawers and a door. The design includes four small drawers on the right and a single larger drawer on the left.
+Ảnh 6: demo_6_chest_of_drawers.png
+Mô tả (VI): Một tủ gỗ nhỏ gọn với mặt trên hình chữ nhật nhẵn, kết hợp ngăn kéo và cánh cửa. Thiết kế gồm bốn ngăn kéo nhỏ bên phải và một ngăn kéo lớn bên trái.
+Mô tả (EN): A compact wooden cabinet with a smooth rectangular top, featuring a combination of drawers and a door. The design includes four small drawers on the right and a single larger drawer on the left.
 
-Anh 7: demo_7_modern_table.png
-Mo ta (EN): A modern console table with a rectangular top and sturdy legs, featuring a central drawer and a lower shelf for additional storage. Finished in a soft white color.
+Ảnh 7: demo_7_modern_table.png
+Mô tả (VI): Một bàn console hiện đại với mặt trên hình chữ nhật và chân chắc chắn, có một ngăn kéo ở giữa và kệ thấp hơn để lưu trữ thêm. Hoàn thiện bằng màu trắng nhẹ nhàng.
+Mô tả (EN): A modern console table with a rectangular top and sturdy legs, featuring a central drawer and a lower shelf for additional storage. Finished in a soft white color.
 
-Anh 8: demo_8_usb_cable.png
-Mo ta (EN): A flexible USB-C cable with a rounded loop design, featuring a flat connector at one end and a standard connector at the other. The cable is uniform in a light gray color.
-(Luu y: Object nay qua mong/phang, kho tao 3D tot)
+Ảnh 8: demo_8_usb_cable.png
+Mô tả (VI): Một dây cáp USB-C dẻo có thiết kế vòng tròn, với đầu nối phẳng ở một đầu và đầu nối tiêu chuẩn ở đầu kia. Cáp có màu xám nhạt đồng nhất.
+Mô tả (EN): A flexible USB-C cable with a rounded loop design, featuring a flat connector at one end and a standard connector at the other. The cable is uniform in a light gray color.
+(Lưu ý: Object này quá mỏng/phẳng, khó tạo 3D tốt)
 
-Anh 9: demo_9_chair.png
-Mo ta (EN): A white wooden chair featuring a padded seat and an intricately designed backrest with curved latticework. The legs are slightly tapered and square, enhancing its classic aesthetic.
+Ảnh 9: demo_9_chair.png
+Mô tả (VI): Một chiếc ghế gỗ màu trắng với đệm ngồi và lưng ghế được thiết kế tinh xảo với hoa văn cong. Chân ghế hơi thuôn và vuông, tạo nét thẩm mỹ cổ điển.
+Mô tả (EN): A white wooden chair featuring a padded seat and an intricately designed backrest with curved latticework. The legs are slightly tapered and square, enhancing its classic aesthetic.
 
-Anh 10: demo_10_dumbbell.png
-Mo ta (EN): A solid hexagonal weight with a smooth surface. It features a central cylindrical grip flanked by two hexagonal ends, designed for easy handling. The overall color is a uniform green.
+Ảnh 10: demo_10_dumbbell.png
+Mô tả (VI): Một quả tạ lục giác với bề mặt nhẵn. Phần giữa là tay cầm hình trụ được kẹp giữa hai đầu lục giác, thiết kế để dễ cầm nắm. Màu sắc đồng nhất màu xanh lá.
+Mô tả (EN): A solid hexagonal weight with a smooth surface. It features a central cylindrical grip flanked by two hexagonal ends, designed for easy handling. The overall color is a uniform green.
 
-Anh 11: demo_11_dining_set.png
-Mo ta (EN): A white wooden table with a rectangular top and four sturdy legs, accompanied by two matching high-backed chairs. The chairs feature a simple design with horizontal slats in the backrest.
+Ảnh 11: demo_11_dining_set.png
+Mô tả (VI): Một bộ bàn ăn gỗ trắng gồm bàn hình chữ nhật với bốn chân chắc chắn và hai ghế lưng cao đi kèm. Ghế có thiết kế đơn giản với các thanh ngang ở lưng ghế.
+Mô tả (EN): A white wooden table with a rectangular top and four sturdy legs, accompanied by two matching high-backed chairs. The chairs feature a simple design with horizontal slats in the backrest.
 
-Anh 12: demo_12_laptop_bag.png
-Mo ta (EN): A sleek, modern computer bag featuring a smooth, textured surface. It includes double handles and a removable shoulder strap for versatile carrying options.
+Ảnh 12: demo_12_laptop_bag.png
+Mô tả (VI): Một túi máy tính hiện đại, bóng bẩy với bề mặt có họa tiết nhẹ. Túi có hai quai xách và dây đeo vai có thể tháo rời để đa dạng cách mang.
+Mô tả (EN): A sleek, modern computer bag featuring a smooth, textured surface. It includes double handles and a removable shoulder strap for versatile carrying options.
 
-Anh 13: demo_13_shelving_unit.png
-Mo ta (EN): A tall, multi-tiered shelving unit made from wire, featuring four open mesh shelves and a sleek, minimal design. It is supported by vertical rods with small round footings.
+Ảnh 13: demo_13_shelving_unit.png
+Mô tả (VI): Một kệ lưới cao nhiều tầng làm từ dây kim loại, có bốn ngăn lưới mở và thiết kế tối giản thanh lịch. Kệ được đỡ bởi các thanh dọc với chân tròn nhỏ.
+Mô tả (EN): A tall, multi-tiered shelving unit made from wire, featuring four open mesh shelves and a sleek, minimal design. It is supported by vertical rods with small round footings.

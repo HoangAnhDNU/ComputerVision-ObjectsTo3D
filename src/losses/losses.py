@@ -129,6 +129,54 @@ def repulsion_loss(pred_xyz, k=8, h=0.03, max_points=512):
     return penalty.mean()
 
 
+def normal_consistency_loss(pred_xyz, k=8, max_points=512):
+    """
+    Differentiable normal consistency loss (Laplacian smoothness).
+    Phạt các điểm có vị trí không nhất quán với neighbors → bề mặt mượt hơn.
+
+    Cách tiếp cận: Laplacian deviation
+        L(i) = mean_j(x_j - x_i) cho k nearest neighbors
+        Loss = ||L||^2 → nhỏ khi bề mặt mượt, lớn khi có gai/lỗi
+    Hoàn toàn differentiable, không cần numpy.
+
+    Args:
+        pred_xyz: [batch, N, 3]
+        k: số nearest neighbors
+        max_points: giới hạn số points để tránh O(N²) memory
+    Returns:
+        loss: scalar
+    """
+    B, N, _ = pred_xyz.shape
+
+    if N > max_points:
+        idx = torch.randperm(N, device=pred_xyz.device)[:max_points]
+        sub = pred_xyz[:, idx, :]
+    else:
+        sub = pred_xyz
+    N_sub = sub.size(1)
+
+    # Pairwise distances [B, N_sub, N_sub]
+    diff_all = sub.unsqueeze(2) - sub.unsqueeze(1)  # [B, N, N, 3]
+    dist_sq = (diff_all ** 2).sum(-1)  # [B, N, N]
+
+    # Loại bỏ self-distance
+    diag = torch.eye(N_sub, device=pred_xyz.device, dtype=torch.bool).unsqueeze(0)
+    dist_sq = dist_sq.masked_fill(diag, float('inf'))
+
+    # K nearest neighbors
+    k_actual = min(k, N_sub - 1)
+    _, knn_idx = dist_sq.topk(k_actual, dim=-1, largest=False)  # [B, N, k]
+
+    # Gather neighbor positions: [B, N_sub, k, 3]
+    flat_idx = knn_idx.reshape(B, -1)  # [B, N_sub*k]
+    flat_idx_exp = flat_idx.unsqueeze(-1).expand(-1, -1, 3)
+    neighbors = torch.gather(sub, 1, flat_idx_exp).reshape(B, N_sub, k_actual, 3)
+
+    # Laplacian: độ lệch so với vị trí trung bình của neighbors
+    laplacian = (neighbors - sub.unsqueeze(2)).mean(dim=2)  # [B, N_sub, 3]
+    return (laplacian ** 2).mean()
+
+
 def uniformity_loss(pred_xyz, gt_xyz, nn_idx=None):
     """
     Uniformity Loss: phạt phân bố không đều bằng cách so sánh
@@ -171,21 +219,23 @@ def uniformity_loss(pred_xyz, gt_xyz, nn_idx=None):
 
 class MultiModal3DLoss(nn.Module):
     """
-    Combined loss: L = λ1·CD + λ2·EMD + λ3·Color + λ4·Repulsion + λ5·Uniform
+    Combined loss: L = λ1·CD + λ2·EMD + λ3·Color + λ4·Repulsion + λ5·Uniform + λ6·Normal
     """
 
     def __init__(self, lambda_cd=1.0, lambda_emd=0.5, lambda_color=0.2,
-                 lambda_repulsion=0.1, lambda_uniform=0.05,
-                 use_emd=True, repulsion_k=8, repulsion_h=0.03):
+                 lambda_repulsion=0.1, lambda_uniform=0.05, lambda_normal=0.0,
+                 use_emd=True, repulsion_k=8, repulsion_h=0.03, normal_k=8):
         super().__init__()
         self.lambda_cd = lambda_cd
         self.lambda_emd = lambda_emd
         self.lambda_color = lambda_color
         self.lambda_repulsion = lambda_repulsion
         self.lambda_uniform = lambda_uniform
+        self.lambda_normal = lambda_normal
         self.use_emd = use_emd
         self.repulsion_k = repulsion_k
         self.repulsion_h = repulsion_h
+        self.normal_k = normal_k
 
     def forward(self, pred_outputs, gt_point_cloud):
         """
@@ -235,12 +285,18 @@ class MultiModal3DLoss(nn.Module):
         if self.lambda_uniform > 0:
             uni_loss = uniformity_loss(pred_xyz, gt_xyz, nn_idx=nn_idx)
 
+        # Normal Consistency Loss (Laplacian smoothness → bề mặt mượt hơn)
+        norm_loss = torch.tensor(0.0, device=cd.device)
+        if self.lambda_normal > 0:
+            norm_loss = normal_consistency_loss(pred_xyz, k=self.normal_k, max_points=512)
+
         # Total
         total = (self.lambda_cd * (cd + 0.5 * coarse_cd)
                  + self.lambda_emd * emd
                  + self.lambda_color * c_loss
                  + self.lambda_repulsion * rep_loss
-                 + self.lambda_uniform * uni_loss)
+                 + self.lambda_uniform * uni_loss
+                 + self.lambda_normal * norm_loss)
 
         return {
             "total": total,
@@ -250,4 +306,5 @@ class MultiModal3DLoss(nn.Module):
             "color_loss": c_loss,
             "repulsion_loss": rep_loss,
             "uniformity_loss": uni_loss,
+            "normal_loss": norm_loss,
         }

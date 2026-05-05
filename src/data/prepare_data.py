@@ -117,7 +117,10 @@ def extract_rendered_images(data_dir: str) -> set:
 
 
 def parse_captions(data_dir: str) -> dict:
-    """Parse CSV thành mapping {object_id → {general: str, compositional: str}}."""
+    """Parse ABO CSV thành mapping {object_id → {general: str}}.
+    
+    ABO CSV có 2 cột: obj_id, caption_text (không có header).
+    """
     csv_path = os.path.join(data_dir, "Cap3D_automated_ABO.csv")
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"Không tìm thấy: {csv_path}")
@@ -126,33 +129,71 @@ def parse_captions(data_dir: str) -> dict:
     with open(csv_path, "r", encoding="utf-8") as f:
         reader = csv.reader(f)
         for row in reader:
-            if len(row) >= 3:
-                obj_id, caption_type, text = row[0], row[1], row[2]
-                captions[obj_id][caption_type] = text
+            if len(row) >= 2:
+                obj_id = row[0].strip()
+                # ABO có thể có 2 cột (obj_id, caption) hoặc 3 cột (obj_id, type, caption)
+                if len(row) >= 3:
+                    caption_type, text = row[1].strip(), row[2].strip()
+                    captions[obj_id][caption_type] = text
+                else:
+                    captions[obj_id]["general"] = row[1].strip()
 
-    print(f"[Captions] Đọc {len(captions)} objects từ CSV")
+    print(f"[ABO Captions] Đọc {len(captions)} objects từ CSV")
     return dict(captions)
 
 
-def verify_data(captions: dict, pc_ids: set, img_ids: set) -> list:
-    """Kiểm tra objects có đủ cả 3 modality và trả về danh sách hợp lệ."""
+def parse_shapenet_captions(data_dir: str) -> dict:
+    """Parse ShapeNet CSV (2 cột: obj_id, caption) thành mapping {obj_id → {general: str}}."""
+    csv_path = os.path.join(data_dir, "Cap3D_automated_ShapeNet.csv")
+    if not os.path.exists(csv_path):
+        print(f"[ShapeNet] Không tìm thấy: {csv_path} → bỏ qua")
+        return {}
+
+    captions = defaultdict(dict)
+    with open(csv_path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if len(row) >= 2:
+                obj_id = row[0].strip()
+                text = row[1].strip()
+                captions[obj_id]["general"] = text
+
+    print(f"[ShapeNet Captions] Đọc {len(captions)} objects từ CSV")
+    return dict(captions)
+
+
+def verify_data(captions: dict, pc_ids: set, img_ids: set, require_images: bool = True) -> list:
+    """Kiểm tra objects có đủ modality và trả về danh sách hợp lệ.
+    
+    Args:
+        require_images: Nếu True (ABO), yêu cầu có rendered images.
+                        Nếu False (ShapeNet), chỉ cần caption + point cloud.
+    """
     caption_ids = set(captions.keys())
-    valid_ids = caption_ids & pc_ids & img_ids
+
+    if require_images:
+        valid_ids = caption_ids & pc_ids & img_ids
+    else:
+        valid_ids = caption_ids & pc_ids  # ShapeNet: không có rendered images
 
     # Chỉ giữ objects có ít nhất 1 caption
     valid_ids = {oid for oid in valid_ids if len(captions.get(oid, {})) > 0}
 
     print(f"[Verify] Objects có caption: {len(caption_ids)}")
     print(f"[Verify] Objects có point cloud: {len(pc_ids)}")
-    print(f"[Verify] Objects có rendered images: {len(img_ids)}")
-    print(f"[Verify] Objects hợp lệ (đủ 3 modality): {len(valid_ids)}")
+    if require_images:
+        print(f"[Verify] Objects có rendered images: {len(img_ids)}")
+        print(f"[Verify] Objects hợp lệ (đủ 3 modality): {len(valid_ids)}")
+    else:
+        print(f"[Verify] Objects hợp lệ (caption + PC, không cần images): {len(valid_ids)}")
 
     missing_pc = caption_ids - pc_ids
-    missing_img = caption_ids - img_ids
     if missing_pc:
         print(f"  [!] {len(missing_pc)} objects thiếu point cloud")
-    if missing_img:
-        print(f"  [!] {len(missing_img)} objects thiếu rendered images")
+    if require_images:
+        missing_img = caption_ids - img_ids
+        if missing_img:
+            print(f"  [!] {len(missing_img)} objects thiếu rendered images")
 
     return sorted(valid_ids)
 
@@ -203,7 +244,7 @@ def save_captions_json(data_dir: str, captions: dict, valid_ids: list):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Chuẩn bị dữ liệu Cap3D ABO")
+    parser = argparse.ArgumentParser(description="Chuẩn bị dữ liệu Cap3D ABO + ShapeNet")
     parser.add_argument(
         "--data-dir",
         type=str,
@@ -222,18 +263,23 @@ def main():
         action="store_true",
         help="Bỏ qua giải nén rendered images (tốn thời gian nhất)",
     )
+    parser.add_argument(
+        "--include-shapenet",
+        action="store_true",
+        help="Gộp ShapeNet vào splits (cần Cap3D_automated_ShapeNet.csv + shapenet/pointclouds/)",
+    )
     args = parser.parse_args()
 
     data_dir = args.data_dir
     print(f"Data directory: {data_dir}")
     print("=" * 60)
 
-    # 1. Parse captions
-    print("\n--- BƯỚC 1: Parse captions ---")
+    # 1. Parse captions ABO
+    print("\n--- BƯỚC 1: Parse captions ABO ---")
     captions = parse_captions(data_dir)
 
-    # 2. Giải nén point clouds
-    print("\n--- BƯỚC 2: Giải nén point clouds ---")
+    # 2. Giải nén point clouds ABO
+    print("\n--- BƯỚC 2: Giải nén point clouds ABO ---")
     if args.skip_extract:
         pc_dir = os.path.join(data_dir, "pointclouds")
         if os.path.exists(pc_dir):
@@ -245,8 +291,8 @@ def main():
     else:
         pc_ids = extract_pointclouds(data_dir)
 
-    # 3. Giải nén rendered images
-    print("\n--- BƯỚC 3: Giải nén rendered images ---")
+    # 3. Giải nén rendered images ABO
+    print("\n--- BƯỚC 3: Giải nén rendered images ABO ---")
     if args.skip_extract or args.skip_images:
         img_dir = os.path.join(data_dir, "rendered_images")
         if os.path.exists(img_dir):
@@ -258,9 +304,36 @@ def main():
     else:
         img_ids = extract_rendered_images(data_dir)
 
-    # 4. Kiểm tra tính toàn vẹn
-    print("\n--- BƯỚC 4: Kiểm tra dữ liệu ---")
-    valid_ids = verify_data(captions, pc_ids, img_ids)
+    # 4. Kiểm tra tính toàn vẹn ABO
+    print("\n--- BƯỚC 4: Kiểm tra dữ liệu ABO ---")
+    valid_ids = verify_data(captions, pc_ids, img_ids, require_images=True)
+
+    # 4b. Gộp ShapeNet nếu có
+    if args.include_shapenet:
+        print("\n--- BƯỚC 4b: Gộp ShapeNet ---")
+        sn_captions = parse_shapenet_captions(data_dir)
+
+        # Tìm ShapeNet point clouds (hỗ trợ cả .ply và .pt)
+        sn_pc_dir = os.path.join(data_dir, "shapenet", "pointclouds")
+        sn_pc_ids = set()
+        if os.path.exists(sn_pc_dir):
+            sn_pc_ids = {f.replace(".ply", "") for f in os.listdir(sn_pc_dir) if f.endswith(".ply")}
+            # Cũng tính .pt
+            sn_pt_dir = os.path.join(data_dir, "shapenet", "pointclouds_pt")
+            if os.path.exists(sn_pt_dir):
+                sn_pc_ids |= {f.replace(".pt", "") for f in os.listdir(sn_pt_dir) if f.endswith(".pt")}
+
+        if len(sn_pc_ids) > 0:
+            sn_valid = verify_data(sn_captions, sn_pc_ids, set(), require_images=False)
+            print(f"[ShapeNet] {len(sn_valid)} objects hợp lệ (caption + PC)")
+            # Gộp vào danh sách chung
+            all_valid_ids = sorted(set(valid_ids) | set(sn_valid))
+            captions.update(sn_captions)
+            print(f"[Gộp] ABO: {len(valid_ids)} + ShapeNet: {len(sn_valid)} = Tổng: {len(all_valid_ids)}")
+            valid_ids = all_valid_ids
+        else:
+            print(f"[ShapeNet] Chưa có point clouds tại {sn_pc_dir} → bỏ qua")
+            print("  Tải ShapeNet trước: PointCloud_zips_ShapeNet/compressed_pcs_00.zip")
 
     # 5. Chia splits
     print("\n--- BƯỚC 5: Chia train/val/test ---")
@@ -274,7 +347,8 @@ def main():
     # 7. Tóm tắt
     print("\n" + "=" * 60)
     print("HOÀN THÀNH CHUẨN BỊ DỮ LIỆU!")
-    print(f"  - Point clouds: {os.path.join(data_dir, 'pointclouds')}")
+    print(f"  - ABO point clouds: {os.path.join(data_dir, 'pointclouds')}")
+    print(f"  - ShapeNet point clouds: {os.path.join(data_dir, 'shapenet', 'pointclouds')}")
     print(f"  - Rendered images: {os.path.join(data_dir, 'rendered_images')}")
     print(f"  - Captions JSON: {os.path.join(data_dir, 'captions.json')}")
     print(f"  - Splits: {os.path.join(data_dir, 'splits')}")

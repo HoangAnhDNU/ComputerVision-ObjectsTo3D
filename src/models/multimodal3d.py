@@ -88,19 +88,28 @@ class Multimodal3DModel(nn.Module):
     def forward(self, image, text_tokens):
         """
         Args:
-            image: [batch, 3, 224, 224]
+            image: [batch, 3, 224, 224]        — single view
+                   [batch, K, 3, 224, 224]     — multi-view (K views)
             text_tokens: [batch, seq_len] (CLIP tokenized)
         Returns:
             dict với point_cloud [batch, fine_points, 6] và intermediate outputs
         """
+        is_multi_view = image.dim() == 5  # [B, K, 3, 224, 224]
+
         if self.decoder_type == "transformer":
-            # Grid features: [B, 49, embed_dim] (thông tin spatial)
-            image_grid = self.encoders.encode_image_grid(image)
+            if is_multi_view:
+                # Multi-view: concat K*49 patches → richer cross-attention context
+                image_grid = self.encoders.encode_image_grid_multi(image)  # [B, K*49, D]
+            else:
+                image_grid = self.encoders.encode_image_grid(image)        # [B, 49, D]
             text_features = self.encoders.encode_text(text_tokens)
             outputs = self.decoder(image_grid, text_features)
         else:
-            # CLS token: [B, embed_dim] (legacy)
-            image_features = self.encoders.encode_image(image)
+            if is_multi_view:
+                # Multi-view: mean pool K views → [B, D]
+                image_features = self.encoders.encode_multi_view(image)
+            else:
+                image_features = self.encoders.encode_image(image)
             text_features = self.encoders.encode_text(text_tokens)
             fused_features = self.fusion(image_features, text_features)
             outputs = self.decoder(fused_features)

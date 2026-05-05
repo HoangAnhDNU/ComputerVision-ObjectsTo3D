@@ -478,14 +478,20 @@ class DemoApp:
             ),
         ])
 
+        num_views = self.config.get("data", {}).get("num_views", 1)
+
         if image is not None:
             img = Image.fromarray(image).convert("RGB") if not isinstance(image, Image.Image) else image.convert("RGB")
-            img_tensor = preprocess(img).unsqueeze(0).to(self.device)
+            img_tensor = preprocess(img).unsqueeze(0).to(self.device)  # [1, 3, 224, 224]
         else:
             img_tensor = torch.zeros(1, 3, 224, 224, device=self.device)
 
+        if num_views > 1:
+            # Multi-view: lặp lại ảnh duy nhất K lần → [1, K, 3, 224, 224]
+            img_tensor = img_tensor.unsqueeze(1).expand(-1, num_views, -1, -1, -1).contiguous()
+
         if text is None or text.strip() == "":
-            text = "a 3D object"
+            text = "một vật thể 3D"
 
         # Tokenize
         text_tokens = self.model.tokenize([text]).to(self.device)
@@ -562,8 +568,8 @@ class DemoApp:
                     gr.Markdown("### Input")
                     image_input = gr.Image(label="Upload ảnh 2D", type="pil", height=250)
                     text_input = gr.Textbox(
-                        label="Mô tả văn bản",
-                        placeholder="Ví dụ: a red chair with wooden legs",
+                        label="Mô tả văn bản (tiếng Việt hoặc tiếng Anh)",
+                        placeholder="Ví dụ: một chiếc ghế gỗ có bốn chân",
                         lines=2,
                     )
                     quality_input = gr.Radio(
@@ -572,7 +578,7 @@ class DemoApp:
                         label="Chất lượng đầu ra",
                         info="High = nhiều points hơn, mesh đẹp hơn, chậm hơn",
                     )
-                    generate_btn = gr.Button("Generate 3D Model", variant="primary", size="lg")
+                    generate_btn = gr.Button("✨ Tạo Mô Hình 3D", variant="primary", size="lg")
                     status = gr.Textbox(label="Trạng thái", lines=5, interactive=False)
 
                 # --- Output Panel ---
@@ -590,16 +596,16 @@ class DemoApp:
                         obj_file = gr.File(label="Mesh (.OBJ)")
                         glb_file = gr.File(label="Mesh (.GLB)")
 
-            # --- Examples ---
-            gr.Markdown("### Ví dụ mô tả")
+            # --- Examples (tiếng Việt + tiếng Anh) ---
+            gr.Markdown("### Ví dụ mô tả (hỗ trợ tiếng Việt)")
             gr.Examples(
                 examples=[
+                    [None, "một chiếc ghế gỗ có bốn chân"],
+                    [None, "một chiếc đèn bàn màu trắng"],
+                    [None, "một chiếc xe thể thao màu đỏ"],
+                    [None, "một chậu cây xanh"],
                     [None, "a blue cube with red top"],
-                    [None, "a wooden chair with four legs"],
-                    [None, "a purple headphone"],
-                    [None, "a green plant in a pot"],
-                    [None, "a white desk lamp"],
-                    [None, "a red sports car"],
+                    [None, "a wooden shelf with multiple tiers"],
                 ],
                 inputs=[image_input, text_input],
             )
@@ -620,7 +626,7 @@ class DemoApp:
 
 def main():
     parser = argparse.ArgumentParser(description="Demo Gradio cho Multimodal 3D")
-    parser.add_argument("--config", type=str, default="configs/default.yaml")
+    parser.add_argument("--config", type=str, default="configs/colab.yaml")
     parser.add_argument("--checkpoint", type=str, default="checkpoints/best_model.pth")
     parser.add_argument("--share", action="store_true", help="Tạo public link")
     parser.add_argument("--port", type=int, default=7860)

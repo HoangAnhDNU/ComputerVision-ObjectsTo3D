@@ -10,6 +10,7 @@ data:
   batch_size: 32
   num_workers: 2
   max_objects: 0               # 0 = dùng toàn bộ dataset
+  num_views: 4                 # Số view/object (1=single, 4=multi-view DiffuRank)
 
 model:
   clip_model: "ViT-B-32"
@@ -42,6 +43,8 @@ loss:
   repulsion_k: 8                  # Số k-NN để xét repulsion
   repulsion_h: 0.03               # Ngưỡng khoảng cách repulsion
   use_emd: false
+  lambda_normal: 0.05          # Normal consistency (Laplacian smoothness)
+  normal_k: 8                  # Số k-NN cho normal loss
 
 logging:
   log_dir: "runs"
