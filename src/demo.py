@@ -11,7 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import argparse
 import os
+import re
 import time
+import unicodedata
 
 import gradio as gr
 import numpy as np
@@ -114,16 +116,199 @@ def remove_statistical_outliers(pc, num_neighbors=16, std_ratio=1.5):
 
     xyz = pc[:, :3]
     tree = cKDTree(xyz)
-    dists, _ = tree.query(xyz, k=num_neighbors + 1)
+    k = min(num_neighbors + 1, len(pc))
+    dists, _ = tree.query(xyz, k=k)
+    if dists.ndim == 1:
+        return pc
     mean_d = np.mean(dists[:, 1:], axis=1)
 
     stat_threshold = mean_d.mean() + std_ratio * mean_d.std()
-    quantile_threshold = np.quantile(mean_d, 0.98)
+    quantile_threshold = np.quantile(mean_d, 0.99)
     threshold = max(stat_threshold, quantile_threshold)
     keep = mean_d <= threshold
 
-    # Tránh lọc quá mạnh khi điểm còn ít hoặc có chi tiết mảnh
-    min_keep = max(1024, int(0.75 * len(pc)))
+    # Tránh lọc quá mạnh làm mất cấu trúc tổng thể
+    min_keep = max(320, int(0.85 * len(pc)))
+    if int(np.sum(keep)) < min_keep:
+        return pc
+
+    return pc[keep]
+
+
+def auto_crop_foreground(image, min_area_ratio=0.015, margin_ratio=0.12):
+    """Tự động crop foreground để vật thể chiếm khung hình lớn hơn."""
+    rgb = np.array(image.convert("RGB"))
+    h, w = rgb.shape[:2]
+    if h < 8 or w < 8:
+        return image.convert("RGB"), False
+
+    mask = None
+    if "A" in image.getbands():
+        alpha = np.array(image.getchannel("A"))
+        alpha_mask = alpha > 10
+        if float(np.mean(alpha_mask)) >= min_area_ratio:
+            mask = alpha_mask
+
+    if mask is None:
+        border = np.concatenate(
+            [rgb[0, :, :], rgb[-1, :, :], rgb[:, 0, :], rgb[:, -1, :]], axis=0
+        ).astype(np.float32)
+        bg_color = np.median(border, axis=0)
+        diff = np.linalg.norm(rgb.astype(np.float32) - bg_color[None, None, :], axis=2)
+        threshold = max(12.0, float(np.percentile(diff, 85) * 0.45))
+        mask = diff > threshold
+
+    if float(np.mean(mask)) < min_area_ratio:
+        return image.convert("RGB"), False
+
+    ys, xs = np.where(mask)
+    y0, y1 = int(ys.min()), int(ys.max()) + 1
+    x0, x1 = int(xs.min()), int(xs.max()) + 1
+
+    pad_y = max(2, int((y1 - y0) * margin_ratio))
+    pad_x = max(2, int((x1 - x0) * margin_ratio))
+    y0 = max(0, y0 - pad_y)
+    y1 = min(h, y1 + pad_y)
+    x0 = max(0, x0 - pad_x)
+    x1 = min(w, x1 + pad_x)
+
+    if x0 == 0 and y0 == 0 and x1 == w and y1 == h:
+        return image.convert("RGB"), False
+
+    return image.crop((x0, y0, x1, y1)).convert("RGB"), True
+
+
+def point_cloud_shape_score(pc):
+    """Heuristic score để chọn kết quả inference dễ nhìn hơn."""
+    if pc is None or len(pc) < 32:
+        return -1e9
+
+    xyz = pc[:, :3].astype(np.float32)
+    xyz = xyz - np.mean(xyz, axis=0, keepdims=True)
+
+    cov = np.cov(xyz.T)
+    if cov.shape != (3, 3):
+        return -1e9
+    eigvals = np.sort(np.linalg.eigvalsh(cov))[::-1]
+    anisotropy = float(eigvals[0] / (eigvals[2] + 1e-8))
+
+    radius = np.linalg.norm(xyz, axis=1)
+    max_r = float(np.max(radius)) + 1e-8
+    xyz_n = xyz / max_r
+
+    bins = 10
+    voxel_idx = np.floor((xyz_n + 1.0) * 0.5 * bins).astype(np.int32)
+    voxel_idx = np.clip(voxel_idx, 0, bins - 1)
+    occupancy = np.unique(voxel_idx, axis=0).shape[0] / float(bins ** 3)
+
+    r50 = float(np.quantile(radius, 0.5)) + 1e-8
+    r90 = float(np.quantile(radius, 0.9))
+    spread = r90 / r50
+
+    return anisotropy + 8.0 * occupancy + 0.2 * spread
+
+
+VIET_DIACRITIC_CHARS = set("ăâđêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệóòỏõọốồổỗộớờởỡợíìỉĩịúùủũụứừửữựýỳỷỹỵ")
+
+OBJECT_KEYWORDS = {
+    "chair": ("chair", "armchair", "stool", "seat", "ghế"),
+    "table": ("table", "desk", "bàn"),
+    "lamp": ("lamp", "light", "đèn"),
+    "car": ("car", "automobile", "xe"),
+    "plant": ("plant", "potted plant", "tree", "cây"),
+    "sofa": ("sofa", "couch"),
+}
+
+VI_HINT_TOKENS = {
+    "mot", "mau", "go", "ghe", "ban", "chan", "chiec", "co", "voi", "va", "lung", "dem", "hinh"
+}
+
+
+def _strip_accents(text):
+    return "".join(ch for ch in unicodedata.normalize("NFD", text) if unicodedata.category(ch) != "Mn")
+
+
+def detect_object_category(text):
+    if not text:
+        return None
+
+    lowered = text.lower()
+    ascii_text = _strip_accents(lowered)
+
+    for category, keywords in OBJECT_KEYWORDS.items():
+        for kw in keywords:
+            kw_lower = kw.lower()
+            if any(ch in VIET_DIACRITIC_CHARS for ch in kw_lower):
+                if kw_lower in lowered:
+                    return category
+            else:
+                kw_ascii = _strip_accents(kw_lower)
+                if re.search(rf"\b{re.escape(kw_ascii)}\b", ascii_text):
+                    return category
+
+    return None
+
+
+def is_likely_vietnamese_text(text):
+    if not text:
+        return False
+
+    lowered = text.lower()
+    if any(ch in VIET_DIACRITIC_CHARS for ch in lowered):
+        return True
+
+    tokens = set(re.findall(r"[a-z]+", _strip_accents(lowered)))
+    return len(tokens.intersection(VI_HINT_TOKENS)) >= 2
+
+
+def build_english_prompt_candidates(text):
+    """Tạo danh sách prompt tiếng Anh (ưu tiên EN để demo ổn định hơn)."""
+    user_text = (text or "").strip()
+    candidates = []
+    prompt_source = "default"
+    category = detect_object_category(user_text)
+
+    if user_text:
+        if is_likely_vietnamese_text(user_text):
+            prompt_source = "auto-en-from-vi"
+            if category is not None:
+                candidates.append(f"a detailed 3d model of a {category}")
+                candidates.append(f"a {category}")
+            else:
+                candidates.append("a detailed 3d object")
+        else:
+            prompt_source = "user-english"
+            candidates.append(user_text)
+            if category is not None:
+                candidates.append(f"a detailed 3d model of a {category}")
+    else:
+        candidates.append("a detailed 3d object")
+
+    candidates.append("a 3d object")
+
+    dedup = []
+    for prompt in candidates:
+        p = re.sub(r"\s+", " ", prompt).strip()
+        if p and p not in dedup:
+            dedup.append(p)
+
+    return dedup[:4], prompt_source, category
+
+
+def remove_radius_outliers(pc, keep_ratio=0.985):
+    """Loại bỏ các điểm quá xa tâm robust (median center)."""
+    if len(pc) < 128:
+        return pc
+
+    xyz = pc[:, :3]
+    center = np.median(xyz, axis=0)
+    radius = np.linalg.norm(xyz - center, axis=1)
+
+    quantile = np.clip(keep_ratio, 0.7, 0.99)
+    threshold = np.quantile(radius, quantile)
+    keep = radius <= threshold
+
+    min_keep = max(320, int(0.85 * len(pc)))
     if int(np.sum(keep)) < min_keep:
         return pc
 
@@ -309,6 +494,13 @@ def save_mesh(mesh, output_path):
 
 class DemoApp:
     def __init__(self, config_path, checkpoint_path, device=None):
+        # Resolve relative paths từ project root (thư mục cha của src/)
+        project_root = Path(__file__).resolve().parent.parent
+        if not os.path.isabs(config_path):
+            config_path = os.path.join(project_root, config_path)
+        if not os.path.isabs(checkpoint_path):
+            checkpoint_path = os.path.join(project_root, checkpoint_path)
+
         # Load config
         with open(config_path, "r") as f:
             self.config = yaml.safe_load(f)
@@ -338,16 +530,28 @@ class DemoApp:
         """
         Post-process point cloud: densify + smooth.
         quality: "low", "medium", "high"
+        Tự động điều chỉnh densify dựa trên số điểm đầu vào:
+          - >= 1024 pts (A100 model): ít/không densify vì đã đủ chi tiết
+          - < 1024 pts (CPU model): densify mạnh hơn để bù thưa
         """
+        n_raw = len(pc)
+        high_res = n_raw >= 1024  # A100: 2048 pts, CPU: 512 pts
+
         if quality == "low":
             pc = smooth_point_cloud(pc, num_neighbors=6, iterations=1)
         elif quality == "medium":
-            pc = densify_point_cloud(pc, iterations=1, num_neighbors=3, max_dist=0.10)
-            pc = smooth_point_cloud(pc, num_neighbors=8, iterations=1)
+            if high_res:
+                pc = smooth_point_cloud(pc, num_neighbors=8, iterations=1)
+            else:
+                pc = densify_point_cloud(pc, iterations=1, num_neighbors=3, max_dist=0.10)
+                pc = smooth_point_cloud(pc, num_neighbors=8, iterations=1)
         else:  # high
-            # Giữ chi tiết mảnh (chân ghế) nên không lọc sớm quá mạnh
-            pc = densify_point_cloud(pc, iterations=2, num_neighbors=5, max_dist=0.12)
-            pc = smooth_point_cloud(pc, num_neighbors=9, iterations=1)
+            if high_res:
+                pc = densify_point_cloud(pc, iterations=1, num_neighbors=5, max_dist=0.10)
+                pc = smooth_point_cloud(pc, num_neighbors=9, iterations=1)
+            else:
+                pc = densify_point_cloud(pc, iterations=2, num_neighbors=5, max_dist=0.12)
+                pc = smooth_point_cloud(pc, num_neighbors=9, iterations=1)
 
         # Lọc outliers sau khi densify/smooth
         pc = remove_statistical_outliers(pc, num_neighbors=18, std_ratio=2.4)
@@ -374,11 +578,13 @@ class DemoApp:
         # Point cloud scatter
         colors = [f'rgb({int(r*255)},{int(g*255)},{int(b*255)})' for r, g, b in rgb]
 
+        marker_size = 4.5 if len(display_pc) < 1000 else (3.5 if len(display_pc) < 5000 else 3.0)
+
         fig = go.Figure(data=[go.Scatter3d(
             x=xyz[:, 0], y=xyz[:, 1], z=xyz[:, 2],
             mode='markers',
             marker=dict(
-                size=3.0,
+                size=marker_size,
                 color=colors,
                 opacity=0.95,
                 line=dict(width=0),
@@ -491,7 +697,7 @@ class DemoApp:
             img_tensor = img_tensor.unsqueeze(1).expand(-1, num_views, -1, -1, -1).contiguous()
 
         if text is None or text.strip() == "":
-            text = "một vật thể 3D"
+            text = "a 3d object"
 
         # Tokenize
         text_tokens = self.model.tokenize([text]).to(self.device)
@@ -502,6 +708,7 @@ class DemoApp:
 
         # Lấy point cloud gốc
         raw_pc = outputs["point_cloud"][0].cpu().numpy()  # [N, 6]
+
         t_infer = time.time() - t0
 
         # Post-process: densify + smooth

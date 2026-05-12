@@ -61,7 +61,7 @@ def cos_pi(x):
     return math.cos(math.pi * x)
 
 
-def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_every=10, save_every=50, ckpt_dir=None, best_val_cd=float("inf"), patience_counter=0, config=None, epoch_0idx=0):
+def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_every=10, save_every=50, ckpt_dir=None, best_val_cd=float("inf"), patience_counter=0, config=None, epoch_0idx=0, scaler=None):
     model.train()
     total_loss = 0.0
     loss_details = {"chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0, "normal_loss": 0.0, "repulsion_loss": 0.0, "uniformity_loss": 0.0}
@@ -76,18 +76,25 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_
         # Tokenize text
         text_tokens = model.tokenize(captions).to(device)
 
-        # Forward
-        outputs = model(images, text_tokens)
-
-        # Loss
-        loss_dict = criterion(outputs, gt_pc)
-        loss = loss_dict["total"]
+        # Forward + Loss
+        use_amp = scaler is not None
+        with torch.cuda.amp.autocast(enabled=use_amp):
+            outputs = model(images, text_tokens)
+            loss_dict = criterion(outputs, gt_pc)
+            loss = loss_dict["total"]
 
         # Backward
         optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
 
         # Accumulate
         total_loss += loss.item()
@@ -114,6 +121,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_
                 "best_val_cd": best_val_cd,
                 "patience_counter": patience_counter,
                 "config": config,
+                "scaler_state_dict": scaler.state_dict() if scaler else None,
             }, tmp_path)
             os.replace(tmp_path, last_path)
             pbar.write(f"  Mid-epoch checkpoint saved at batch {batch_idx + 1}")
@@ -130,6 +138,7 @@ def validate(model, dataloader, criterion, device, epoch):
     loss_details = {"chamfer_distance": 0.0, "coarse_cd": 0.0, "emd": 0.0, "color_loss": 0.0, "normal_loss": 0.0, "repulsion_loss": 0.0, "uniformity_loss": 0.0}
     num_batches = 0
 
+    use_amp = device.type == "cuda"
     pbar = tqdm(dataloader, desc=f"Epoch {epoch} [Val]")
     for batch in pbar:
         images = batch["image"].to(device)
@@ -138,8 +147,9 @@ def validate(model, dataloader, criterion, device, epoch):
 
         text_tokens = model.tokenize(captions).to(device)
 
-        outputs = model(images, text_tokens)
-        loss_dict = criterion(outputs, gt_pc)
+        with torch.cuda.amp.autocast(enabled=use_amp):
+            outputs = model(images, text_tokens)
+            loss_dict = criterion(outputs, gt_pc)
 
         total_loss += loss_dict["total"].item()
         for key in loss_details:
@@ -190,6 +200,12 @@ def main():
     # Device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
+
+    # Mixed precision scaler (AMP)
+    use_amp = device.type == "cuda"
+    scaler = torch.cuda.amp.GradScaler() if use_amp else None
+    if use_amp:
+        print("Mixed precision (AMP) enabled")
 
     # Giới hạn tài nguyên để giảm nhiệt máy (chỉ trên local PC)
     is_local = train_cfg.get("cooldown_seconds", 0) > 0
@@ -282,6 +298,8 @@ def main():
         start_epoch = ckpt["epoch"] + 1
         best_val_cd = ckpt.get("best_val_cd", float("inf"))
         patience_counter = ckpt.get("patience_counter", 0)
+        if scaler and ckpt.get("scaler_state_dict"):
+            scaler.load_state_dict(ckpt["scaler_state_dict"])
         print(f"Resumed from epoch {start_epoch}, best_val_cd={best_val_cd:.4f}, patience={patience_counter}")
 
     # Training loop
@@ -306,6 +324,7 @@ def main():
             patience_counter=patience_counter,
             config=config,
             epoch_0idx=epoch,
+            scaler=scaler,
         )
 
         # Validate
@@ -337,6 +356,7 @@ def main():
                 "best_val_cd": best_val_cd,
                 "patience_counter": patience_counter,
                 "config": config,
+                "scaler_state_dict": scaler.state_dict() if scaler else None,
             }, tmp_path)
             os.replace(tmp_path, best_path)
             print(f"  ** Best model saved! CD={best_val_cd:.4f}")
@@ -354,6 +374,7 @@ def main():
             "best_val_cd": best_val_cd,
             "patience_counter": patience_counter,
             "config": config,
+            "scaler_state_dict": scaler.state_dict() if scaler else None,
         }, tmp_path)
         os.replace(tmp_path, last_path)
 
