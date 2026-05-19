@@ -521,10 +521,45 @@ class DemoApp:
         self.model.eval()
         print(f"Device: {self.device}, Open3D: {HAS_OPEN3D}")
 
+        # Lazy translator (vi → en)
+        self._vi_translator = None
+        self._vi_tokenizer  = None
+
         # Output dir
         project_root = Path(__file__).resolve().parent.parent
         self.output_dir = os.path.join(project_root, "results", "demo")
         os.makedirs(self.output_dir, exist_ok=True)
+
+    @staticmethod
+    def _is_vietnamese(text):
+        """Heuristic: kiểm tra text có chứa ký tự tiếng Việt không."""
+        vi_chars = set("àáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ"
+                       "ÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐƠƯẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼẾỀỂỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪỬỮỰỲỴỶỸ")
+        return any(c in vi_chars for c in text)
+
+    def _translate_to_english(self, text):
+        """Dịch tiếng Việt → tiếng Anh bằng MarianMT (lazy load)."""
+        if not self._is_vietnamese(text):
+            return text, False
+        try:
+            from transformers import MarianMTModel, MarianTokenizer
+            if self._vi_translator is None:
+                print("Loading vi→en translator...")
+                model_name = "Helsinki-NLP/opus-mt-vi-en"
+                self._vi_tokenizer  = MarianTokenizer.from_pretrained(model_name)
+                self._vi_translator = MarianMTModel.from_pretrained(model_name).to(self.device)
+                self._vi_translator.eval()
+                print("✓ Translator ready")
+            inputs = self._vi_tokenizer([text], return_tensors="pt",
+                                        padding=True, truncation=True, max_length=128)
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            with torch.no_grad():
+                translated = self._vi_translator.generate(**inputs, max_length=128)
+            en_text = self._vi_tokenizer.batch_decode(translated, skip_special_tokens=True)[0]
+            return en_text, True
+        except Exception as e:
+            print(f"Translation failed ({e}), using original text")
+            return text, False
 
     def _postprocess_point_cloud(self, pc, quality="high"):
         """
@@ -699,8 +734,13 @@ class DemoApp:
         if text is None or text.strip() == "":
             text = "a 3d object"
 
+        # Tự động dịch tiếng Việt → tiếng Anh (CLIP được train với tiếng Anh)
+        text_en, was_translated = self._translate_to_english(text)
+        if was_translated:
+            print(f"[Translate] '{text}' → '{text_en}'")
+
         # Tokenize
-        text_tokens = self.model.tokenize([text]).to(self.device)
+        text_tokens = self.model.tokenize([text_en]).to(self.device)
 
         # Inference
         with torch.no_grad():
@@ -745,8 +785,10 @@ class DemoApp:
             glb_path = None
 
         total_time = time.time() - t0
+        translate_line = f"  Dịch: '{text}' → '{text_en}'\n" if was_translated else ""
         status = (
             f"✓ Tạo mô hình 3D thành công!\n"
+            f"{translate_line}"
             f"  Points: {len(raw_pc)} → {len(pc)} (sau densify)\n"
             f"  Mesh: {len(mesh.faces) if mesh and hasattr(mesh, 'faces') else 0} faces\n"
             f"  Thời gian: inference {t_infer:.1f}s, post-process {t_post:.1f}s, mesh {t_mesh:.1f}s\n"

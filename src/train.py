@@ -78,7 +78,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, log_
 
         # Forward + Loss
         use_amp = scaler is not None
-        with torch.cuda.amp.autocast(enabled=use_amp):
+        with torch.amp.autocast('cuda', enabled=use_amp):
             outputs = model(images, text_tokens)
             loss_dict = criterion(outputs, gt_pc)
             loss = loss_dict["total"]
@@ -147,7 +147,7 @@ def validate(model, dataloader, criterion, device, epoch):
 
         text_tokens = model.tokenize(captions).to(device)
 
-        with torch.cuda.amp.autocast(enabled=use_amp):
+        with torch.amp.autocast('cuda', enabled=use_amp):
             outputs = model(images, text_tokens)
             loss_dict = criterion(outputs, gt_pc)
 
@@ -203,7 +203,7 @@ def main():
 
     # Mixed precision scaler (AMP)
     use_amp = device.type == "cuda"
-    scaler = torch.cuda.amp.GradScaler() if use_amp else None
+    scaler = torch.amp.GradScaler('cuda') if use_amp else None
     if use_amp:
         print("Mixed precision (AMP) enabled")
 

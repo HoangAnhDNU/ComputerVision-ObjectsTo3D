@@ -21,8 +21,12 @@ def chamfer_distance(pred_xyz, gt_xyz, return_nn=False):
         nn_idx: [batch, N] (chỉ khi return_nn=True) - index GT gần nhất cho mỗi pred point
     """
     # Pairwise distances: [batch, N, M]
-    diff = pred_xyz.unsqueeze(2) - gt_xyz.unsqueeze(1)  # [B, N, 1, 3] - [B, 1, M, 3]
-    dist_matrix = (diff ** 2).sum(-1)  # [B, N, M]
+    # Dùng |a-b|² = |a|² + |b|² - 2a·b để tránh tạo tensor [B,N,M,3] tốn 3GB
+    pred_sq = (pred_xyz ** 2).sum(-1, keepdim=True)          # [B, N, 1]
+    gt_sq   = (gt_xyz   ** 2).sum(-1, keepdim=True)          # [B, M, 1]
+    cross   = torch.bmm(pred_xyz, gt_xyz.transpose(1, 2))    # [B, N, M]
+    dist_matrix = pred_sq + gt_sq.transpose(1, 2) - 2.0 * cross  # [B, N, M]
+    dist_matrix = dist_matrix.clamp(min=0.0)
 
     # Min distance từ mỗi pred point đến gt
     min_dist_pred_to_gt, nn_idx = dist_matrix.min(dim=2)  # [B, N]
